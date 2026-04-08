@@ -1,6 +1,7 @@
 {
   "AccessionNumber": "Accession #",
   "Empty": "Boş",
+  "ExpiryDate": "Son kullanma tarihi",
   "MRN": "MRN",
   "Modality": "Modalite",
   "PatientName": "Hasta Adı",

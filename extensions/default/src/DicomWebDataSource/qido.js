@@ -49,6 +49,7 @@ function processResults(qidoStudies) {
       studyInstanceUid: getString(qidoStudy['0020000D']),
       date: getString(qidoStudy['00080020']), // YYYYMMDD
       time: getString(qidoStudy['00080030']), // HHmmss.SSS (24-hour, minutes, seconds, fractional seconds)
+      expiryDate: getString(qidoStudy['00141020']) || '-', // Expiry Date (industrial / DICONDE)
       accession: getString(qidoStudy['00080050']) || '', // short string, probably a number?
       mrn: getString(qidoStudy['00100020']) || '', // medicalRecordNumber
       patientName: utils.formatPN(getName(qidoStudy['00100010'])) || '',
@@ -151,6 +152,7 @@ function mapParams(params, options = {}) {
   const commaSeparatedFields = [
     '00081030', // Study Description
     '00080060', // Modality
+    '00141020', // Expiry Date
     // Add more fields here if you want them in the result
   ].join(',');
 

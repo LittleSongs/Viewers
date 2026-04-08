@@ -32,7 +32,7 @@ const StudyListFilter = ({
     <React.Fragment>
       <div>
         <div className="bg-black">
-          <div className="container relative mx-auto flex flex-col pt-5">
+          <div className="relative mx-auto flex w-full max-w-[1600px] flex-col px-4 pt-5">
             <div className="mb-5 flex flex-row justify-between">
               <div className="flex min-w-[1px] shrink flex-row items-center gap-6">
                 <Typography
@@ -86,7 +86,7 @@ const StudyListFilter = ({
           </div>
         </div>
       </div>
-      <div className="sticky -top-1 z-10 mx-auto border-b-4 border-black">
+      <div className="sticky -top-1 z-10 mx-auto w-full max-w-[1600px] px-4 border-b-4 border-black">
         <div className="bg-primary-dark pt-3 pb-3">
           <InputGroup
             inputMeta={filtersMeta}

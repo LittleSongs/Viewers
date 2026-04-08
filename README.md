@@ -136,6 +136,7 @@ Here is a schematic representation of our development workflow:
 
 - [Yarn 1.20.0+](https://yarnpkg.com/en/docs/install)
 - [Node 18+](https://nodejs.org/en/)
+- [Bun](https://bun.sh/docs/installation)
 - Yarn Workspaces should be enabled on your machine:
   - `yarn config set workspaces-experimental true`
 
@@ -166,7 +167,13 @@ yarn config set workspaces-experimental true
 
 # Restore dependencies
 yarn install --frozen-lockfile
+
+# Ensure Bun is installed and available on PATH
+bun --version
 ```
+
+`yarn dev` expects `bun` to be installed and available on your `PATH`. If `bun`
+is missing, install it first by following the Bun installation guide above.
 
 ### Cornerstone3D Integration Testing
 

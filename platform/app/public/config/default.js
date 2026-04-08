@@ -88,7 +88,7 @@ window.config = {
       ],
     },
   ],
-  defaultDataSourceName: 'ohif',
+  defaultDataSourceName: 'dicomweb',
   /* Dynamic config allows user to pass "configUrl" query string this allows to load config without recompiling application. The regex will ensure valid configuration source */
   // dangerouslyUseDynamicConfig: {
   //   enabled: true,
@@ -100,6 +100,31 @@ window.config = {
   //   regex: /.*/,
   // },
   dataSources: [
+    {
+      namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
+      sourceName: 'dicomweb',
+      configuration: {
+        friendlyName: 'Local Orthanc',
+        name: 'orthanc',
+
+        qidoRoot: '/dicomweb',
+        wadoRoot: '/dicomweb',
+        wadoUriRoot: '/dicomweb',
+
+        qidoSupportsIncludeField: false,
+        supportsReject: false,
+        imageRendering: 'wadors',
+        thumbnailRendering: 'wadors',
+        enableStudyLazyLoad: true,
+        supportsFuzzyMatching: false,
+        supportsWildcard: true,
+        staticWado: true,
+        singlepart: 'bulkdata',
+        acceptHeader: [
+          'multipart/related; type=application/octet-stream; transfer-syntax=*'
+        ]
+      }
+    },
     {
       namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
       sourceName: 'ohif',

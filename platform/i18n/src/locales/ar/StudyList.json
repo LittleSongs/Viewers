@@ -3,6 +3,7 @@
   "ClearFilters": "مسح الفلاتر",
   "Description": "الوصف",
   "Empty": "فارغ",
+  "ExpiryDate": "تاريخ الانتهاء",
   "Filter list to 100 studies or less to enable sorting": "قم بتصفية القائمة إلى 100 دراسة أو أقل لتمكين الفرز",
   "Instances": "الصور",
   "Modality": "جهاز التصوير",

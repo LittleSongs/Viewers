@@ -261,6 +261,7 @@ function WorkList({
       description,
       mrn,
       patientName,
+      expiryDate,
       date,
       time,
     } = study;
@@ -274,6 +275,10 @@ function WorkList({
       moment(time, ['HH', 'HHmm', 'HHmmss', 'HHmmss.SSS']).format(
         t('Common:localTimeFormat', 'hh:mm A')
       );
+    const expiryDateStr =
+      expiryDate &&
+      moment(expiryDate, ['YYYYMMDD', 'YYYY.MM.DD'], true).isValid() &&
+      moment(expiryDate, ['YYYYMMDD', 'YYYY.MM.DD']).format(t('Common:localDateFormat', 'MMM-DD-YYYY'));
 
     const makeCopyTooltipCell = textValue => {
       if (!textValue) {
@@ -301,12 +306,12 @@ function WorkList({
         {
           key: 'patientName',
           content: patientName ? makeCopyTooltipCell(patientName) : null,
-          gridCol: 4,
+          gridCol: 3,
         },
         {
           key: 'mrn',
           content: makeCopyTooltipCell(mrn),
-          gridCol: 3,
+          gridCol: 2,
         },
         {
           key: 'studyDate',
@@ -317,12 +322,21 @@ function WorkList({
             </>
           ),
           title: `${studyDate || ''} ${studyTime || ''}`,
-          gridCol: 5,
+          gridCol: 4,
+        },
+        {
+          key: 'expiryDate',
+          content: (
+            <>
+              {expiryDateStr && <span className="mr-4">{expiryDateStr}</span>}
+            </>
+          ),
+          gridCol: 4,
         },
         {
           key: 'description',
           content: makeCopyTooltipCell(description),
-          gridCol: 4,
+          gridCol: 3,
         },
         {
           key: 'modality',
@@ -629,6 +643,7 @@ const defaultFilterValues = {
     startDate: null,
     endDate: null,
   },
+  expiryDate: '',
   description: '',
   modalities: [],
   accession: '',
@@ -663,6 +678,7 @@ function _getQueryFilterValues(params) {
       startDate: params.get('startdate') || null,
       endDate: params.get('enddate') || null,
     },
+    expiryDate: params.get('expirydate'),
     description: params.get('description'),
     modalities: params.get('modalities') ? params.get('modalities').split(',') : [],
     accession: params.get('accession'),
