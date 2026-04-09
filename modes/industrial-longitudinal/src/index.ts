@@ -7,6 +7,8 @@ import {
 import { ToolbarService } from '@ohif/core';
 import { id } from './id';
 
+const DEFECT_PANEL_ID = '@ohif/extension-industrial-review.panelModule.panelDefectList';
+
 const { TOOLBAR_SECTIONS } = ToolbarService;
 
 const inspectionContextButton = {
@@ -21,14 +23,72 @@ const inspectionContextButton = {
   },
 };
 
+const defectAnnotationButtonGroup = {
+  id: 'DefectAnnotation',
+  uiType: 'ohif.toolButtonList',
+  props: {
+    buttonSection: 'defectAnnotationSection',
+  },
+};
+
+const defectRectangleButton = {
+  id: 'DefectRectangle',
+  uiType: 'ohif.toolButton',
+  props: {
+    id: 'RectangleROI',
+    icon: 'tool-rectangle',
+    label: '矩形缺陷',
+    tooltip: '框选矩形缺陷',
+    commands: 'activateDefectRectangleTool',
+    evaluate: 'evaluate.cornerstoneTool',
+  },
+};
+
+const defectPolygonButton = {
+  id: 'DefectPolygon',
+  uiType: 'ohif.toolButton',
+  props: {
+    id: 'PlanarFreehandROI',
+    icon: 'tool-freehand',
+    label: '多边形缺陷',
+    tooltip: '绘制多边形缺陷',
+    commands: 'activateDefectPolygonTool',
+    evaluate: 'evaluate.cornerstoneTool',
+  },
+};
+
+const defectPointButton = {
+  id: 'DefectPoint',
+  uiType: 'ohif.toolButton',
+  props: {
+    id: 'Probe',
+    icon: 'tool-probe',
+    label: '点缺陷',
+    tooltip: '点选缺陷位置',
+    commands: 'activateDefectPointTool',
+    evaluate: 'evaluate.cornerstoneTool',
+  },
+};
+
 const primaryToolbar = longitudinalModeInstance.toolbarSections?.[TOOLBAR_SECTIONS.primary] || [];
+const industrialRouteBase = longitudinalModeInstance.routes?.[0];
+const industrialRouteProps = industrialRouteBase?.layoutInstance?.props || {};
+const rightPanels = industrialRouteProps.rightPanels || [];
 
 const toolbarSections = {
   ...longitudinalModeInstance.toolbarSections,
-  [TOOLBAR_SECTIONS.primary]: [...primaryToolbar, 'InspectionContext'],
+  defectAnnotationSection: ['DefectRectangle', 'DefectPolygon', 'DefectPoint'],
+  [TOOLBAR_SECTIONS.primary]: [...primaryToolbar, 'InspectionContext', 'DefectAnnotation'],
 };
 
-const toolbarButtons = [...longitudinalToolbarButtons, inspectionContextButton];
+const toolbarButtons = [
+  ...longitudinalToolbarButtons,
+  inspectionContextButton,
+  defectAnnotationButtonGroup,
+  defectRectangleButton,
+  defectPolygonButton,
+  defectPointButton,
+];
 
 const extensions = {
   ...longitudinalExtensionDependencies,
@@ -36,8 +96,15 @@ const extensions = {
 };
 
 const industrialRoute = {
-  ...longitudinalModeInstance.routes?.[0],
+  ...industrialRouteBase,
   path: 'industrial-viewer',
+  layoutInstance: {
+    ...industrialRouteBase?.layoutInstance,
+    props: {
+      ...industrialRouteProps,
+      rightPanels: [...rightPanels, DEFECT_PANEL_ID],
+    },
+  },
 };
 
 const industrialMode = {
