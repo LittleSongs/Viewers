@@ -2,9 +2,9 @@
   "AccessionNumber": "Mã phiểu",
   "Empty": "Rỗng",
   "ExpiryDate": "Ngày hết hạn",
-  "MRN": "Mã Bệnh nhân",
+  "MRN": "Mã linh kiện",
   "Modality": "Thiết bị",
-  "PatientName": "Tên Bệnh nhân",
+  "PatientName": "Tên linh kiện",
   "StudyDate": "Ngày chụp",
   "Description": "Diễn giải",
   "StudyList": "Danh sách"

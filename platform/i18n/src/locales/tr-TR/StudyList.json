@@ -2,9 +2,9 @@
   "AccessionNumber": "Accession #",
   "Empty": "Boş",
   "ExpiryDate": "Son kullanma tarihi",
-  "MRN": "MRN",
+  "MRN": "Bileşen Kimliği",
   "Modality": "Modalite",
-  "PatientName": "Hasta Adı",
+  "PatientName": "Bileşen Adı",
   "StudyDate": "Çalışma Zamanı",
   "Description": "Açıklama",
   "StudyList": "Çalışma Listesi"
