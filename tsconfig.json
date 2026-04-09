@@ -24,7 +24,9 @@
       "@ohif/extension-cornerstone-dicom-sr": ["./extensions/cornerstone-dicom-sr/src"],
       "@ohif/extension-cornerstone-dicom-seg": ["./extensions/cornerstone-dicom-seg/src"],
       "@ohif/extension-ultrasound-pleura-bline": ["./extensions/usAnnotation/src"],
+      "@ohif/extension-industrial-review": ["./extensions/industrial-review/src"],
       "@ohif/mode-ultrasound-pleura-bline": ["./modes/usAnnotation/src"],
+      "@ohif/mode-industrial-longitudinal": ["./modes/industrial-longitudinal/src"],
       "@ohif/extension-cornerstone": ["./extensions/cornerstone/src"],
       "@ohif/extension-dicom-pdf": ["./extensions/dicom-pdf/src"],
       "@state": ["./platform/app/src/state"]

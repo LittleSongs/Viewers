@@ -201,6 +201,14 @@ module.exports = (env, argv, { SRC_DIR, ENTRY }) => {
         '@hooks': path.resolve(__dirname, '../platform/app/src/hooks'),
         '@routes': path.resolve(__dirname, '../platform/app/src/routes'),
         '@state': path.resolve(__dirname, '../platform/app/src/state'),
+        '@ohif/extension-industrial-review': path.resolve(
+          __dirname,
+          '../extensions/industrial-review/src'
+        ),
+        '@ohif/mode-industrial-longitudinal': path.resolve(
+          __dirname,
+          '../modes/industrial-longitudinal/src'
+        ),
       },
       // Which directories to search when resolving modules
       modules: [
