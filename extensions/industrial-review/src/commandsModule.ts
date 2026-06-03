@@ -1,7 +1,7 @@
 import { Types } from '@ohif/core';
 import buildInspectionContext from './utils/buildInspectionContext';
 import InspectionContextModal from './components/InspectionContextModal';
-import { DEFECT_PANEL_ID, type DefectToolName } from './types';
+import { DEFECT_PANEL_ID, LINE_PROFILE_PANEL_ID, type DefectToolName } from './types';
 import { saveEvaluation } from './api/ndtClient';
 
 const DEFECT_TOOL_GROUP_IDS = ['default', 'mpr', 'SRToolGroup', 'volume3d'];
@@ -53,6 +53,13 @@ function commandsModule({
     activateDefectRectangleTool: () => activateDefectTool('RectangleROI'),
     activateDefectPolygonTool: () => activateDefectTool('PlanarFreehandROI'),
     activateDefectPointTool: () => activateDefectTool('Probe'),
+    activateLineProfileTool: () => {
+      panelService.activatePanel(LINE_PROFILE_PANEL_ID, true);
+      commandsManager.runCommand('setToolActiveToolbar', {
+        toolName: 'Length',
+        toolGroupIds: DEFECT_TOOL_GROUP_IDS,
+      });
+    },
     jumpToDefect: ({ uid }) => {
       commandsManager.runCommand('jumpToMeasurement', { uid });
       panelService.activatePanel(DEFECT_PANEL_ID, true);
@@ -80,6 +87,7 @@ function commandsModule({
       activateDefectRectangleTool: actions.activateDefectRectangleTool,
       activateDefectPolygonTool: actions.activateDefectPolygonTool,
       activateDefectPointTool: actions.activateDefectPointTool,
+      activateLineProfileTool: actions.activateLineProfileTool,
       jumpToDefect: actions.jumpToDefect,
       removeDefect: actions.removeDefect,
       updateDefectMeasurement: actions.updateDefectMeasurement,

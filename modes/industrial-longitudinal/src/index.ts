@@ -8,6 +8,7 @@ import { ToolbarService } from '@ohif/core';
 import { id } from './id';
 
 const DEFECT_PANEL_ID = '@ohif/extension-industrial-review.panelModule.panelDefectList';
+const LINE_PROFILE_PANEL_ID = '@ohif/extension-industrial-review.panelModule.panelLineProfile';
 
 const { TOOLBAR_SECTIONS } = ToolbarService;
 
@@ -102,7 +103,7 @@ const industrialRoute = {
     ...industrialRouteBase?.layoutInstance,
     props: {
       ...industrialRouteProps,
-      rightPanels: [...rightPanels, DEFECT_PANEL_ID],
+      rightPanels: [...rightPanels, DEFECT_PANEL_ID, LINE_PROFILE_PANEL_ID],
     },
   },
 };
