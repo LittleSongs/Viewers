@@ -2,6 +2,7 @@ import { Types } from '@ohif/core';
 import buildInspectionContext from './utils/buildInspectionContext';
 import InspectionContextModal from './components/InspectionContextModal';
 import { DEFECT_PANEL_ID, type DefectToolName } from './types';
+import { saveEvaluation } from './api/ndtClient';
 
 const DEFECT_TOOL_GROUP_IDS = ['default', 'mpr', 'SRToolGroup', 'volume3d'];
 
@@ -9,8 +10,13 @@ function commandsModule({
   servicesManager,
   commandsManager,
 }: Types.Extensions.ExtensionParams): Types.Extensions.CommandsModule {
-  const { viewportGridService, displaySetService, uiModalService, panelService, measurementService } =
-    servicesManager.services as AppTypes.Services;
+  const {
+    viewportGridService,
+    displaySetService,
+    uiModalService,
+    panelService,
+    measurementService,
+  } = servicesManager.services as AppTypes.Services;
 
   const activateDefectTool = (toolName: DefectToolName) => {
     panelService.activatePanel(DEFECT_PANEL_ID, true);
@@ -62,6 +68,9 @@ function commandsModule({
 
       measurementService.update(uid, { ...measurement, ...updates }, false);
     },
+    saveNdtEvaluation: ({ payload, runtimeConfig }) => {
+      return saveEvaluation(payload, runtimeConfig);
+    },
   };
 
   return {
@@ -74,6 +83,7 @@ function commandsModule({
       jumpToDefect: actions.jumpToDefect,
       removeDefect: actions.removeDefect,
       updateDefectMeasurement: actions.updateDefectMeasurement,
+      saveNdtEvaluation: actions.saveNdtEvaluation,
     },
     defaultContext: 'DEFAULT',
   };

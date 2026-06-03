@@ -7,7 +7,7 @@ export default function getPanelModule({}: Types.Extensions.ExtensionParams) {
       name: 'panelDefectList',
       iconName: 'StatusError',
       iconLabel: 'Defects',
-      label: '缺陷清单',
+      label: 'NDT评定',
       component: PanelDefectList,
     },
   ];

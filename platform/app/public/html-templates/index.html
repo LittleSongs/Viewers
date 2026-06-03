@@ -2,6 +2,33 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      (function () {
+        var g = typeof globalThis !== 'undefined' ? globalThis : window;
+
+        // 给可能误走 Node 分支的代码一个兜底
+        if (typeof g.__filename === 'undefined') {
+          g.__filename = '/';
+        }
+
+        if (typeof g.__dirname === 'undefined') {
+          g.__dirname = '/';
+        }
+
+        // 某些依赖会探测 global
+        if (typeof g.global === 'undefined') {
+          g.global = g;
+        }
+
+        // 只在不存在时补最小 process，避免直接崩
+        if (typeof g.process === 'undefined') {
+          g.process = { env: {}, browser: true };
+        } else {
+          if (!g.process.env) g.process.env = {};
+          g.process.browser = true;
+        }
+      })();
+    </script>
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1, shrink-to-fit=no, maximum-scale=1.0, user-scalable=no"
@@ -45,6 +72,50 @@
     <script type="text/javascript">
       console.time('scriptToView');
       window.PUBLIC_URL = '<%= PUBLIC_URL %>';
+
+      (function cleanupLegacyServiceWorkers() {
+        if (!('serviceWorker' in navigator)) {
+          return;
+        }
+
+        navigator.serviceWorker
+          .getRegistrations()
+          .then(function (registrations) {
+            const unregisterJobs = registrations.map(function (registration) {
+              return registration.unregister();
+            });
+
+            return Promise.all(unregisterJobs).then(function (results) {
+              return {
+                hadRegistrations: registrations.length > 0,
+                removedAny: results.some(Boolean),
+              };
+            });
+          })
+          .then(function (result) {
+            if (!window.caches) {
+              return result;
+            }
+
+            return caches.keys().then(function (cacheNames) {
+              const deleteJobs = cacheNames.map(function (cacheName) {
+                return caches.delete(cacheName);
+              });
+
+              return Promise.all(deleteJobs).then(function () {
+                return result;
+              });
+            });
+          })
+          .then(function (result) {
+            if (result && result.hadRegistrations && result.removedAny) {
+              window.location.reload();
+            }
+          })
+          .catch(function (error) {
+            console.warn('Failed to clean legacy service workers', error);
+          });
+      })();
     </script>
     <link
       rel="manifest"

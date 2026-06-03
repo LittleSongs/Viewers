@@ -1,6 +1,13 @@
 import type { DefectListItem, DefectMeasurement } from '../types';
 import { DEFECT_TOOL_NAMES } from '../types';
 
+export function getDefectListItemIdentity(measurement: DefectMeasurement, index: number) {
+  return {
+    uid: measurement.uid,
+    defectId: `D-${String(index + 1).padStart(3, '0')}`,
+  };
+}
+
 function roundNumber(value: number, digits = 2) {
   if (!Number.isFinite(value)) {
     return null;
@@ -94,13 +101,16 @@ export function toDefectListItems(measurements: DefectMeasurement[]): DefectList
   return measurements.map((measurement, index) => ({
     uid: measurement.uid,
     defectId: `D-${String(index + 1).padStart(3, '0')}`,
-    type: measurement.defectType || '未分类',
+    type: measurement.defectType || '其他',
     note: measurement.defectNote || '',
-    status: measurement.defectStatus || '待确认',
+    status: measurement.defectStatus || '可接受',
     area: getAreaValue(measurement) || '-',
     location: formatLocation(measurement.points),
     toolName: measurement.toolName,
     isSelected: !!measurement.isSelected,
-    measurement,
+    measurement: {
+      ...measurement,
+      defectLevel: measurement.defectLevel || 'I级',
+    },
   }));
 }

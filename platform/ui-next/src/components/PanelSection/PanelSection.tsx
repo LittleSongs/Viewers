@@ -62,8 +62,8 @@ PanelSection.Header = ({ children, className }) => (
 PanelSection.Header.displayName = 'PanelSection.Header';
 
 PanelSection.Content = ({ children, className }) => (
-  <AccordionContent className={cn('overflow-hidden p-0', className)}>
-    <div className="rounded-b">{children}</div>
+  <AccordionContent className={cn('overflow-hidden', className)}>
+    <div className="w-full rounded-b">{children}</div>
   </AccordionContent>
 );
 
