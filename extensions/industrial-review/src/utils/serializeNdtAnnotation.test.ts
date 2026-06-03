@@ -1,4 +1,9 @@
-import { buildEvaluationPayload, serializeNdtAnnotation } from './serializeNdtAnnotation';
+import {
+  buildBatchEvaluationPayloads,
+  buildEvaluationPayload,
+  serializeNdtAnnotation,
+} from './serializeNdtAnnotation';
+import type { DefectMeasurement } from '../types';
 
 const currentImage = {
   studyInstanceUID: '1.2.3',
@@ -9,7 +14,7 @@ const currentImage = {
   modality: 'DX',
 };
 
-const measurement = {
+const measurement: DefectMeasurement = {
   uid: 'm-1',
   toolName: 'RectangleROI',
   points: [
@@ -74,5 +79,46 @@ describe('serializeNdtAnnotation', () => {
       conclusion: '不可接受',
     });
     expect(JSON.parse(payload.annotationJson).evaluation.remark).toBe('needs repair');
+  });
+
+  it('builds one evaluation payload for each defect measurement', () => {
+    const payloads = buildBatchEvaluationPayloads({
+      taskId: 1001,
+      currentImage,
+      measurements: [
+        {
+          ...measurement,
+          uid: 'm-1',
+          defectType: '裂纹',
+          defectLevel: 'II级',
+          defectStatus: '不可接受',
+          defectNote: 'first defect',
+        },
+        {
+          ...measurement,
+          uid: 'm-2',
+          defectType: '夹渣',
+          defectLevel: 'III级',
+          defectStatus: '需复查',
+          defectNote: 'second defect',
+        },
+      ],
+    });
+
+    expect(payloads).toHaveLength(2);
+    expect(payloads[0]).toMatchObject({
+      taskId: 1001,
+      defectType: '裂纹',
+      defectLevel: 'II级',
+      conclusion: '不可接受',
+    });
+    expect(payloads[1]).toMatchObject({
+      taskId: 1001,
+      defectType: '夹渣',
+      defectLevel: 'III级',
+      conclusion: '需复查',
+    });
+    expect(JSON.parse(payloads[0].annotationJson).measurement.uid).toBe('m-1');
+    expect(JSON.parse(payloads[1].annotationJson).evaluation.remark).toBe('second defect');
   });
 });

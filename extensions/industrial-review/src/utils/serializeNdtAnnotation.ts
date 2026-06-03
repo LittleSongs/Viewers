@@ -5,6 +5,7 @@ import type {
   NdtEvaluationPayload,
   NdtTaskId,
 } from '../types';
+import { CONCLUSION_OPTIONS, DEFECT_LEVEL_OPTIONS, DEFECT_TYPE_OPTIONS } from '../types';
 
 type SerializeArgs = {
   currentImage: NdtCurrentImageInfo;
@@ -15,6 +16,20 @@ type SerializeArgs = {
 type BuildPayloadArgs = SerializeArgs & {
   taskId: NdtTaskId;
 };
+
+type BuildBatchPayloadArgs = {
+  taskId: NdtTaskId;
+  currentImage: NdtCurrentImageInfo;
+  measurements: DefectMeasurement[];
+};
+
+function asOptionalString(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+
+  return String(value);
+}
 
 export function serializeNdtAnnotation({ currentImage, measurement, form }: SerializeArgs) {
   return JSON.stringify({
@@ -46,18 +61,21 @@ export function buildEvaluationPayload({
   form,
 }: BuildPayloadArgs): NdtEvaluationPayload {
   const sourceImage = measurement?.metadata?.referencedImageId ? currentImage : currentImage;
-  const resolvedStudyInstanceUID =
+  const resolvedStudyInstanceUID = asOptionalString(
     measurement?.metadata?.referencedStudyInstanceUID ||
-    measurement?.metadata?.studyInstanceUID ||
-    sourceImage.studyInstanceUID;
-  const resolvedSeriesInstanceUID =
+      measurement?.metadata?.studyInstanceUID ||
+      sourceImage.studyInstanceUID
+  );
+  const resolvedSeriesInstanceUID = asOptionalString(
     measurement?.metadata?.referencedSeriesInstanceUID ||
-    measurement?.metadata?.seriesInstanceUID ||
-    sourceImage.seriesInstanceUID;
-  const resolvedSopInstanceUID =
+      measurement?.metadata?.seriesInstanceUID ||
+      sourceImage.seriesInstanceUID
+  );
+  const resolvedSopInstanceUID = asOptionalString(
     measurement?.metadata?.referencedSopInstanceUID ||
-    measurement?.metadata?.sopInstanceUID ||
-    sourceImage.sopInstanceUID;
+      measurement?.metadata?.sopInstanceUID ||
+      sourceImage.sopInstanceUID
+  );
 
   return {
     taskId,
@@ -78,4 +96,28 @@ export function buildEvaluationPayload({
       form,
     }),
   };
+}
+
+export function buildFormFromMeasurement(measurement: DefectMeasurement): NdtEvaluationForm {
+  return {
+    defectType: measurement.defectType || DEFECT_TYPE_OPTIONS[0],
+    defectLevel: measurement.defectLevel || DEFECT_LEVEL_OPTIONS[0],
+    conclusion: measurement.defectStatus || CONCLUSION_OPTIONS[0],
+    remark: measurement.defectNote || '',
+  };
+}
+
+export function buildBatchEvaluationPayloads({
+  taskId,
+  currentImage,
+  measurements,
+}: BuildBatchPayloadArgs): NdtEvaluationPayload[] {
+  return measurements.map(measurement =>
+    buildEvaluationPayload({
+      taskId,
+      currentImage,
+      measurement,
+      form: buildFormFromMeasurement(measurement),
+    })
+  );
 }

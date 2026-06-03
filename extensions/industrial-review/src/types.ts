@@ -139,3 +139,13 @@ export interface NdtEvaluationPayload {
   conclusion: string;
   annotationJson: string;
 }
+
+export interface NdtBatchEvaluationSrPayload {
+  taskId: NdtTaskId;
+  studyInstanceUID?: string;
+  seriesInstanceUID?: string;
+  sopInstanceUID?: string;
+  evaluations: NdtEvaluationPayload[];
+  srFile: Blob;
+  srFileName?: string;
+}

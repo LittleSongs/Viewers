@@ -1,11 +1,13 @@
 import type {
   NdtCurrentRelationParams,
+  NdtBatchEvaluationSrPayload,
   NdtEvaluationPayload,
+  NdtEvaluationRecord,
   NdtRelationResponse,
   NdtRuntimeConfig,
 } from '../types';
 
-export const DEFAULT_RUOYI_API_BASE = '';
+export const DEFAULT_RUOYI_API_BASE = 'http://localhost:8080';
 
 const TOKEN_STORAGE_KEYS = ['token', 'Admin-Token', 'ruoyi-token', 'Authorization'];
 
@@ -76,10 +78,6 @@ export function normalizeRuoyiApiBase(value?: string | null) {
   const trimmed = value?.trim();
   if (trimmed) {
     return trimmed.replace(/\/+$/, '');
-  }
-
-  if (typeof window !== 'undefined') {
-    return window.location.origin.replace(/\/+$/, '');
   }
 
   return DEFAULT_RUOYI_API_BASE;
@@ -180,4 +178,58 @@ export async function saveEvaluation(
     },
     body: JSON.stringify(payload),
   });
+}
+
+function appendIfPresent(formData: FormData, key: string, value: unknown) {
+  if (value !== undefined && value !== null && value !== '') {
+    formData.append(key, String(value));
+  }
+}
+
+function toFile(blob: Blob, fileName: string) {
+  if (typeof File !== 'undefined' && blob instanceof File) {
+    return blob;
+  }
+
+  return new File([blob], fileName, {
+    type: blob.type || 'application/dicom',
+  });
+}
+
+export async function batchSubmitEvaluationWithSr(
+  payload: NdtBatchEvaluationSrPayload,
+  config: NdtRuntimeConfig
+): Promise<unknown> {
+  const formData = new FormData();
+  const fileName = payload.srFileName || `ndt-evaluation-${payload.taskId}.dcm`;
+
+  appendIfPresent(formData, 'taskId', payload.taskId);
+  appendIfPresent(formData, 'studyInstanceUID', payload.studyInstanceUID);
+  appendIfPresent(formData, 'seriesInstanceUID', payload.seriesInstanceUID);
+  appendIfPresent(formData, 'sopInstanceUID', payload.sopInstanceUID);
+  formData.append('evaluationsJson', JSON.stringify(payload.evaluations));
+  formData.append('srFile', toFile(payload.srFile, fileName), fileName);
+
+  return requestJson('/ndt/evaluation/batch-submit-sr', config, {
+    method: 'POST',
+    body: formData,
+  });
+}
+
+export async function getEvaluationsBySr(
+  params: {
+    taskId: NdtRuntimeConfig['taskId'];
+    srSopInstanceUID: string;
+  },
+  config: NdtRuntimeConfig
+): Promise<NdtEvaluationRecord[]> {
+  const body = await requestJson<{ data?: NdtEvaluationRecord[] } | NdtEvaluationRecord[]>(
+    '/ndt/evaluation/by-sr',
+    config,
+    {
+      query: params,
+    }
+  );
+
+  return ('data' in body && body.data ? body.data : body) as NdtEvaluationRecord[];
 }

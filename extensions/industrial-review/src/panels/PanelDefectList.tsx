@@ -19,12 +19,13 @@ import {
 import useDefectMeasurements from '../hooks/useDefectMeasurements';
 import useNdtRelations from '../hooks/useNdtRelations';
 import useNdtViewerContext from '../hooks/useNdtViewerContext';
-import { saveEvaluation } from '../api/ndtClient';
-import { buildEvaluationPayload } from '../utils/serializeNdtAnnotation';
+import { batchSubmitEvaluationWithSr, getEvaluationsBySr } from '../api/ndtClient';
+import createDicomSrBlob from '../utils/createDicomSrBlob';
+import { buildBatchEvaluationPayloads } from '../utils/serializeNdtAnnotation';
 import {
   CONCLUSION_OPTIONS,
   DEFECT_LEVEL_OPTIONS,
-  DEFECT_STATUS_OPTIONS,
+  DEFECT_TOOL_NAMES,
   DEFECT_TYPE_OPTIONS,
   type DefectListItem,
   type NdtCurrentImageInfo,
@@ -205,7 +206,15 @@ function getRelationValue(item, ...keys: string[]) {
   return undefined;
 }
 
-function RelatedObjectRow({ item }: { item: NdtRelatedObject }) {
+function RelatedObjectRow({
+  item,
+  isSelected = false,
+  onSelect,
+}: {
+  item: NdtRelatedObject;
+  isSelected?: boolean;
+  onSelect?: (item: NdtRelatedObject) => void;
+}) {
   const title =
     getRelationValue(item, 'fileName', 'file_name', 'relatedType', 'related_type') || '未命名对象';
   const sop = getRelationValue(
@@ -217,7 +226,25 @@ function RelatedObjectRow({ item }: { item: NdtRelatedObject }) {
   const createdAt = getRelationValue(item, 'createTime', 'create_time');
 
   return (
-    <div className="border-border bg-background rounded border px-2 py-2">
+    <div
+      className={[
+        'border-border bg-background rounded border px-2 py-2',
+        onSelect ? 'hover:bg-accent/40 cursor-pointer transition-colors' : '',
+        isSelected ? 'ring-primary bg-accent/30 ring-1' : '',
+      ].join(' ')}
+      onClick={() => onSelect?.(item)}
+      role={onSelect ? 'button' : undefined}
+      tabIndex={onSelect ? 0 : undefined}
+      onKeyDown={event => {
+        if (!onSelect) {
+          return;
+        }
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onSelect(item);
+        }
+      }}
+    >
       <div className="text-foreground truncate text-xs font-medium">{String(title)}</div>
       <div className="text-muted-foreground mt-1 truncate text-[11px]">{String(sop || '-')}</div>
       {createdAt ? (
@@ -230,9 +257,13 @@ function RelatedObjectRow({ item }: { item: NdtRelatedObject }) {
 function RelatedObjectGroup({
   title,
   items,
+  selectedSopInstanceUID,
+  onSelect,
 }: {
   title: string;
   items: NdtRelatedObject[] | NdtEvaluationRecord[];
+  selectedSopInstanceUID?: string | null;
+  onSelect?: (item: NdtRelatedObject) => void;
 }) {
   return (
     <div>
@@ -242,7 +273,18 @@ function RelatedObjectGroup({
           {items.map((item, index) => (
             <RelatedObjectRow
               key={String(getRelationValue(item, 'id') || index)}
-              item={item}
+              item={item as NdtRelatedObject}
+              isSelected={
+                !!selectedSopInstanceUID &&
+                getRelationValue(
+                  item,
+                  'relatedSopInstanceUid',
+                  'related_sop_instance_uid',
+                  'sopInstanceUID',
+                  'sop_instance_uid'
+                ) === selectedSopInstanceUID
+              }
+              onSelect={onSelect}
             />
           ))}
         </div>
@@ -349,6 +391,9 @@ export default function PanelDefectList() {
     remark: '',
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedSrSopInstanceUID, setSelectedSrSopInstanceUID] = useState<string | null>(null);
+  const [srEvaluations, setSrEvaluations] = useState<NdtEvaluationRecord[]>([]);
+  const [isLoadingSrEvaluations, setIsLoadingSrEvaluations] = useState(false);
 
   useEffect(() => {
     if (!selectedItem?.uid) {
@@ -368,6 +413,7 @@ export default function PanelDefectList() {
   const canSave =
     !!runtimeConfig.taskId &&
     runtimeConfig.canEvaluate &&
+    items.length > 0 &&
     !!currentImage.studyInstanceUID &&
     !!currentImage.seriesInstanceUID &&
     !!currentImage.sopInstanceUID;
@@ -427,18 +473,30 @@ export default function PanelDefectList() {
 
     setIsSaving(true);
     try {
-      await saveEvaluation(
-        buildEvaluationPayload({
+      const measurements = items.map(item => item.measurement);
+      const evaluations = buildBatchEvaluationPayloads({
+        taskId: runtimeConfig.taskId,
+        currentImage,
+        measurements,
+      });
+      const srFile = createDicomSrBlob(measurements, [...DEFECT_TOOL_NAMES], {
+        SeriesDescription: 'NDT Defect Structured Report',
+      });
+
+      await batchSubmitEvaluationWithSr(
+        {
           taskId: runtimeConfig.taskId,
-          currentImage,
-          measurement: selectedItem?.measurement,
-          form,
-        }),
+          studyInstanceUID: currentImage.studyInstanceUID,
+          seriesInstanceUID: currentImage.seriesInstanceUID,
+          sopInstanceUID: currentImage.sopInstanceUID,
+          evaluations,
+          srFile,
+        },
         runtimeConfig
       );
       uiNotificationService?.show?.({
         title: '评定已保存',
-        message: '缺陷评定结果已提交到 RuoYi。',
+        message: '缺陷评定结果和 DICOM SR 已提交到 RuoYi。',
         type: 'success',
       });
     } catch (err) {
@@ -449,6 +507,41 @@ export default function PanelDefectList() {
       });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSelectSr = async (item: NdtRelatedObject) => {
+    const srSopInstanceUID = getRelationValue(
+      item,
+      'relatedSopInstanceUid',
+      'related_sop_instance_uid',
+      'sopInstanceUID',
+      'sop_instance_uid'
+    );
+    if (!runtimeConfig.taskId || !srSopInstanceUID) {
+      return;
+    }
+
+    setSelectedSrSopInstanceUID(String(srSopInstanceUID));
+    setIsLoadingSrEvaluations(true);
+    try {
+      const records = await getEvaluationsBySr(
+        {
+          taskId: runtimeConfig.taskId,
+          srSopInstanceUID: String(srSopInstanceUID),
+        },
+        runtimeConfig
+      );
+      setSrEvaluations(records);
+    } catch (err) {
+      setSrEvaluations([]);
+      uiNotificationService?.show?.({
+        title: 'SR评定加载失败',
+        message: err?.message || '无法加载该 SR 对应的缺陷评定列表。',
+        type: 'error',
+      });
+    } finally {
+      setIsLoadingSrEvaluations(false);
     }
   };
 
@@ -495,7 +588,23 @@ export default function PanelDefectList() {
             <RelatedObjectGroup
               title="SR报告"
               items={relations.srReports}
+              selectedSopInstanceUID={selectedSrSopInstanceUID}
+              onSelect={handleSelectSr}
             />
+            {selectedSrSopInstanceUID ? (
+              <div>
+                <div className="text-muted-foreground mb-2 text-xs">
+                  {`选中SR评定 (${srEvaluations.length})`}
+                </div>
+                {isLoadingSrEvaluations ? (
+                  <div className="text-muted-foreground rounded border border-dashed px-2 py-3 text-xs">
+                    正在加载该 SR 对应的缺陷评定...
+                  </div>
+                ) : (
+                  <EvaluationRecordGroup items={srEvaluations} />
+                )}
+              </div>
+            ) : null}
             <EvaluationRecordGroup items={relations.evaluations} />
           </div>
         </PanelSection.Content>
@@ -537,8 +646,8 @@ export default function PanelDefectList() {
             <div className="space-y-3">
               <div className="text-muted-foreground rounded border border-dashed px-2 py-2 text-xs">
                 {selectedItem
-                  ? `当前提交对象：${selectedItem.defectId}${selectedUid ? `（已选中 ${selectedUid}）` : ''}`
-                  : '未选择缺陷标注，将只保存当前图像上下文。'}
+                  ? `当前编辑对象：${selectedItem.defectId}${selectedUid ? `（已选中 ${selectedUid}）` : ''}；保存时会提交全部 ${items.length} 个缺陷并生成一个 SR。`
+                  : '暂无缺陷标注，不能提交评定或生成 SR。'}
               </div>
 
               <FormSelect
@@ -581,7 +690,7 @@ export default function PanelDefectList() {
                 disabled={!canSave || isSaving}
                 onClick={onSaveEvaluation}
               >
-                {isSaving ? '保存中...' : '保存评定结果'}
+                {isSaving ? '保存中...' : '保存全部缺陷并生成SR'}
               </Button>
             </div>
           </ScrollArea>
