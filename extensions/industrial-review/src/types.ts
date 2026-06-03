@@ -60,6 +60,10 @@ export interface NdtCurrentImageInfo {
   studyInstanceUID?: string;
   seriesInstanceUID?: string;
   sopInstanceUID?: string;
+  srSopInstanceUID?: string;
+  srSeriesInstanceUID?: string;
+  srDisplaySetInstanceUID?: string;
+  srSeriesDescription?: string;
   seriesDescription?: string;
   instanceNumber?: string | number;
   modality?: string;
@@ -100,6 +104,9 @@ export interface NdtEvaluationRecord {
   defectLevel?: string;
   defect_level?: string;
   conclusion?: string;
+  annotationJson?: string;
+  annotation_json?: string;
+  remark?: string;
   evaluatorUserId?: NdtTaskId;
   evaluator_user_id?: NdtTaskId;
   evaluateTime?: string;

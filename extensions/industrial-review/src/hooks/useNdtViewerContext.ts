@@ -60,6 +60,14 @@ function getCurrentInstance(displaySet, imageId?: string, imageIndex?: number) {
   );
 }
 
+function getSopInstanceUID(displaySet) {
+  return firstDefined(
+    displaySet?.SOPInstanceUID,
+    displaySet?.instance?.SOPInstanceUID,
+    displaySet?.instances?.[0]?.SOPInstanceUID
+  ) as string | undefined;
+}
+
 function buildCurrentImageInfo({
   viewportGridService,
   displaySetService,
@@ -80,10 +88,12 @@ function buildCurrentImageInfo({
     viewportGridService.getState?.()?.viewports?.get(activeViewportId)?.displaySetInstanceUIDs ||
     [];
 
-  const displaySetInstanceUID = displaySetUIDs[0];
-  const displaySet = displaySetInstanceUID
-    ? displaySetService.getDisplaySetByUID(displaySetInstanceUID)
-    : undefined;
+  const displaySets = displaySetUIDs
+    .map(displaySetUID => displaySetService.getDisplaySetByUID(displaySetUID))
+    .filter(Boolean);
+  const srDisplaySet = displaySets.find(displaySet => displaySet?.Modality === 'SR');
+  const displaySet = displaySets.find(displaySet => displaySet?.Modality !== 'SR') || displaySets[0];
+  const displaySetInstanceUID = displaySet?.displaySetInstanceUID || displaySetUIDs[0];
   const viewportInfo = cornerstoneViewportService?.getViewportInfo?.(activeViewportId);
   const viewportData = viewportInfo?.getViewportData?.();
   const cornerstoneViewport =
@@ -113,6 +123,17 @@ function buildCurrentImageInfo({
       | undefined,
     displaySetInstanceUID,
     imageId,
+    srSopInstanceUID: getSopInstanceUID(srDisplaySet),
+    srSeriesInstanceUID: firstDefined(
+      srDisplaySet?.SeriesInstanceUID,
+      srDisplaySet?.instance?.SeriesInstanceUID,
+      srDisplaySet?.instances?.[0]?.SeriesInstanceUID
+    ) as string | undefined,
+    srDisplaySetInstanceUID: srDisplaySet?.displaySetInstanceUID,
+    srSeriesDescription: firstDefined(
+      srDisplaySet?.SeriesDescription,
+      srDisplaySet?.instance?.SeriesDescription
+    ) as string | undefined,
   };
 }
 
@@ -157,6 +178,18 @@ export default function useNdtViewerContext() {
       ),
       cornerstoneViewportService?.subscribe?.(
         cornerstoneViewportService.EVENTS.VIEWPORT_DATA_CHANGED,
+        updateCurrentImage
+      ),
+      displaySetService?.subscribe?.(
+        displaySetService.EVENTS.DISPLAY_SETS_ADDED,
+        updateCurrentImage
+      ),
+      displaySetService?.subscribe?.(
+        displaySetService.EVENTS.DISPLAY_SETS_CHANGED,
+        updateCurrentImage
+      ),
+      displaySetService?.subscribe?.(
+        displaySetService.EVENTS.DISPLAY_SETS_REMOVED,
         updateCurrentImage
       ),
     ].filter(Boolean);

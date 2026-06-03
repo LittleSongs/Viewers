@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSystem } from '@ohif/core';
 import {
   Button,
@@ -187,6 +187,14 @@ function CurrentImageCard({ currentImage }: { currentImage: NdtCurrentImageInfo 
           value={currentImage.sopInstanceUID}
         />
         <InfoRow
+          label="SR SOPInstanceUID"
+          value={currentImage.srSopInstanceUID}
+        />
+        <InfoRow
+          label="SR SeriesDescription"
+          value={currentImage.srSeriesDescription}
+        />
+        <InfoRow
           label="完整性"
           value={currentImage.integrityStatus}
         />
@@ -337,6 +345,67 @@ function EvaluationRecordGroup({ items }: { items: NdtEvaluationRecord[] }) {
   );
 }
 
+function parseAnnotationJson(record: NdtEvaluationRecord) {
+  const value = getRelationValue(record, 'annotationJson', 'annotation_json');
+  if (!value || typeof value !== 'string') {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function getAnnotationMeasurementUid(record: NdtEvaluationRecord) {
+  return parseAnnotationJson(record)?.measurement?.uid;
+}
+
+function getAnnotationRemark(record: NdtEvaluationRecord) {
+  return (
+    getRelationValue(record, 'remark') ||
+    parseAnnotationJson(record)?.evaluation?.remark ||
+    parseAnnotationJson(record)?.measurement?.defectNote
+  );
+}
+
+function getEvaluationNumber(record: NdtEvaluationRecord) {
+  const id = Number(getRelationValue(record, 'id'));
+  return Number.isFinite(id) ? id : Number.MAX_SAFE_INTEGER;
+}
+
+function orderEvaluationsForMeasurements(records: NdtEvaluationRecord[]) {
+  return [...records].sort((left, right) => getEvaluationNumber(left) - getEvaluationNumber(right));
+}
+
+function buildMeasurementUpdates(record: NdtEvaluationRecord) {
+  const updates: Record<string, string> = {};
+  const defectType = getRelationValue(record, 'defectType', 'defect_type');
+  const defectLevel = getRelationValue(record, 'defectLevel', 'defect_level');
+  const conclusion = getRelationValue(record, 'conclusion');
+  const remark = getAnnotationRemark(record);
+
+  if (defectType) {
+    updates.defectType = String(defectType);
+  }
+  if (defectLevel) {
+    updates.defectLevel = String(defectLevel);
+  }
+  if (conclusion) {
+    updates.defectStatus = String(conclusion);
+  }
+  if (remark) {
+    updates.defectNote = String(remark);
+  }
+
+  return updates;
+}
+
+function hasMeasurementUpdates(item: DefectListItem, updates: Record<string, string>) {
+  return Object.entries(updates).some(([key, value]) => item.measurement?.[key] !== value);
+}
+
 function FormSelect({
   label,
   value,
@@ -394,6 +463,7 @@ export default function PanelDefectList() {
   const [selectedSrSopInstanceUID, setSelectedSrSopInstanceUID] = useState<string | null>(null);
   const [srEvaluations, setSrEvaluations] = useState<NdtEvaluationRecord[]>([]);
   const [isLoadingSrEvaluations, setIsLoadingSrEvaluations] = useState(false);
+  const appliedSrEvaluationKeyRef = useRef('');
 
   useEffect(() => {
     if (!selectedItem?.uid) {
@@ -466,6 +536,87 @@ export default function PanelDefectList() {
     });
   };
 
+  const loadSrEvaluations = useCallback(
+    async (srSopInstanceUID: string, options: { notifyOnError?: boolean } = {}) => {
+      if (!runtimeConfig.taskId || !srSopInstanceUID) {
+        return;
+      }
+
+      setSelectedSrSopInstanceUID(srSopInstanceUID);
+      setIsLoadingSrEvaluations(true);
+      try {
+        const records = await getEvaluationsBySr(
+          {
+            taskId: runtimeConfig.taskId,
+            srSopInstanceUID,
+          },
+          runtimeConfig
+        );
+        setSrEvaluations(records);
+      } catch (err) {
+        setSrEvaluations([]);
+        if (options.notifyOnError !== false) {
+          uiNotificationService?.show?.({
+            title: 'SR评定加载失败',
+            message: err?.message || '无法加载该 SR 对应的缺陷评定列表。',
+            type: 'error',
+          });
+        }
+      } finally {
+        setIsLoadingSrEvaluations(false);
+      }
+    },
+    [runtimeConfig, uiNotificationService]
+  );
+
+  useEffect(() => {
+    if (!runtimeConfig.taskId || !currentImage.srSopInstanceUID) {
+      return;
+    }
+
+    loadSrEvaluations(currentImage.srSopInstanceUID, { notifyOnError: false });
+  }, [currentImage.srSopInstanceUID, loadSrEvaluations, runtimeConfig.taskId]);
+
+  useEffect(() => {
+    if (!items.length || !srEvaluations.length || !selectedSrSopInstanceUID) {
+      return;
+    }
+
+    const orderedEvaluations = orderEvaluationsForMeasurements(srEvaluations);
+    const applyKey = [
+      selectedSrSopInstanceUID,
+      orderedEvaluations.map(record => getRelationValue(record, 'id')).join(','),
+      items.map(item => item.uid).join(','),
+    ].join('|');
+
+    if (appliedSrEvaluationKeyRef.current === applyKey) {
+      return;
+    }
+    appliedSrEvaluationKeyRef.current = applyKey;
+
+    orderedEvaluations.forEach((record, index) => {
+      const annotationMeasurementUid = getAnnotationMeasurementUid(record);
+      const targetItem =
+        (annotationMeasurementUid
+          ? items.find(item => item.measurement.uid === annotationMeasurementUid)
+          : undefined) || items[index];
+
+      if (!targetItem) {
+        return;
+      }
+
+      const updates = buildMeasurementUpdates(record);
+      if (!Object.keys(updates).length || !hasMeasurementUpdates(targetItem, updates)) {
+        return;
+      }
+
+      commandsManager.runCommand('updateDefectMeasurement', {
+        uid: targetItem.uid,
+        updates,
+      });
+    });
+  }, [commandsManager, items, selectedSrSopInstanceUID, srEvaluations]);
+
   const onSaveEvaluation = async () => {
     if (!canSave || !runtimeConfig.taskId) {
       return;
@@ -522,27 +673,7 @@ export default function PanelDefectList() {
       return;
     }
 
-    setSelectedSrSopInstanceUID(String(srSopInstanceUID));
-    setIsLoadingSrEvaluations(true);
-    try {
-      const records = await getEvaluationsBySr(
-        {
-          taskId: runtimeConfig.taskId,
-          srSopInstanceUID: String(srSopInstanceUID),
-        },
-        runtimeConfig
-      );
-      setSrEvaluations(records);
-    } catch (err) {
-      setSrEvaluations([]);
-      uiNotificationService?.show?.({
-        title: 'SR评定加载失败',
-        message: err?.message || '无法加载该 SR 对应的缺陷评定列表。',
-        type: 'error',
-      });
-    } finally {
-      setIsLoadingSrEvaluations(false);
-    }
+    loadSrEvaluations(String(srSopInstanceUID));
   };
 
   return (
