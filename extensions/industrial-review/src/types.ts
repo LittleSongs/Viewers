@@ -3,8 +3,6 @@ export const DEFECT_TOOL_NAMES = ['RectangleROI', 'PlanarFreehandROI', 'Probe'] 
 export type DefectToolName = (typeof DEFECT_TOOL_NAMES)[number];
 
 export const DEFECT_PANEL_ID = '@ohif/extension-industrial-review.panelModule.panelDefectList';
-export const LINE_PROFILE_PANEL_ID =
-  '@ohif/extension-industrial-review.panelModule.panelLineProfile';
 
 export const DEFECT_TYPE_OPTIONS = ['气孔', '夹渣', '裂纹', '未焊透', '其他'] as const;
 export const DEFECT_STATUS_OPTIONS = ['待确认', '已确认', '已处理'] as const;
@@ -86,10 +84,20 @@ export interface NdtRelatedObject {
   id?: NdtTaskId;
   relatedType?: string;
   related_type?: string;
+  displaySetInstanceUID?: string;
+  display_set_instance_uid?: string;
   sopInstanceUID?: string;
   sop_instance_uid?: string;
+  relatedSopInstanceUid?: string;
+  related_sop_instance_uid?: string;
+  sourceSopInstanceUID?: string;
+  source_sop_instance_uid?: string;
   seriesInstanceUID?: string;
   series_instance_uid?: string;
+  relatedSeriesInstanceUID?: string;
+  related_series_instance_uid?: string;
+  sourceSeriesInstanceUID?: string;
+  source_series_instance_uid?: string;
   orthancInstanceId?: string;
   orthanc_instance_id?: string;
   fileName?: string;

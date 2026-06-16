@@ -214,6 +214,135 @@ function getRelationValue(item, ...keys: string[]) {
   return undefined;
 }
 
+function toStringValue(value: unknown) {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const normalized = String(value).trim();
+  return normalized || undefined;
+}
+
+function getRelatedDisplaySetUID(item?: NdtRelatedObject | NdtEvaluationRecord | null) {
+  return toStringValue(
+    getRelationValue(
+      item,
+      'displaySetInstanceUID',
+      'display_set_instance_uid',
+      'relatedDisplaySetInstanceUID',
+      'related_display_set_instance_uid'
+    )
+  );
+}
+
+function getRelatedSopInstanceUID(item?: NdtRelatedObject | NdtEvaluationRecord | null) {
+  return toStringValue(
+    getRelationValue(
+      item,
+      'relatedSopInstanceUid',
+      'related_sop_instance_uid',
+      'sopInstanceUID',
+      'sop_instance_uid'
+    )
+  );
+}
+
+function getRelatedSeriesInstanceUID(item?: NdtRelatedObject | NdtEvaluationRecord | null) {
+  return toStringValue(
+    getRelationValue(
+      item,
+      'relatedSeriesInstanceUID',
+      'related_series_instance_uid',
+      'seriesInstanceUID',
+      'series_instance_uid'
+    )
+  );
+}
+
+function getSourceSopInstanceUID(item?: NdtRelatedObject | NdtEvaluationRecord | null) {
+  return toStringValue(
+    getRelationValue(
+      item,
+      'sourceSopInstanceUID',
+      'source_sop_instance_uid',
+      'originalSopInstanceUID',
+      'original_sop_instance_uid',
+      'referencedSopInstanceUID',
+      'referenced_sop_instance_uid',
+      'source_sop_instance_uid'
+    )
+  );
+}
+
+function getSourceSeriesInstanceUID(item?: NdtRelatedObject | NdtEvaluationRecord | null) {
+  return toStringValue(
+    getRelationValue(
+      item,
+      'sourceSeriesInstanceUID',
+      'source_series_instance_uid',
+      'originalSeriesInstanceUID',
+      'original_series_instance_uid',
+      'referencedSeriesInstanceUID',
+      'referenced_series_instance_uid'
+    )
+  );
+}
+
+function getDisplaySetByTarget(displaySetService, target?: Partial<NdtCurrentImageInfo> | null) {
+  const displaySetInstanceUID = toStringValue(target?.displaySetInstanceUID);
+
+  if (displaySetInstanceUID) {
+    const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
+    if (displaySet) {
+      return displaySet;
+    }
+  }
+
+  const sopInstanceUID = toStringValue(target?.sopInstanceUID);
+  const seriesInstanceUID = toStringValue(target?.seriesInstanceUID);
+
+  if (sopInstanceUID && typeof displaySetService.getDisplaySetForSOPInstanceUID === 'function') {
+    const displaySet = displaySetService.getDisplaySetForSOPInstanceUID(
+      sopInstanceUID,
+      seriesInstanceUID
+    );
+    if (displaySet) {
+      return displaySet;
+    }
+  }
+
+  if (sopInstanceUID && typeof displaySetService.getActiveDisplaySets === 'function') {
+    return displaySetService.getActiveDisplaySets().find(displaySet => {
+      const instances = [displaySet?.instance, ...(displaySet?.instances || [])].filter(Boolean);
+      return instances.some(instance => instance?.SOPInstanceUID === sopInstanceUID);
+    });
+  }
+
+  return undefined;
+}
+
+function getOriginalTargetFromRelations(relations): Partial<NdtCurrentImageInfo> | null {
+  const relatedItems = [
+    ...(relations.processedImages || []),
+    ...(relations.snapshots || []),
+    ...(relations.srReports || []),
+  ];
+
+  for (const item of relatedItems) {
+    const sopInstanceUID = getSourceSopInstanceUID(item);
+    const seriesInstanceUID = getSourceSeriesInstanceUID(item);
+
+    if (sopInstanceUID || seriesInstanceUID) {
+      return {
+        sopInstanceUID,
+        seriesInstanceUID,
+      };
+    }
+  }
+
+  return null;
+}
+
 function RelatedObjectRow({
   item,
   isSelected = false,
@@ -445,7 +574,8 @@ function FormSelect({
 export default function PanelDefectList() {
   const items = useDefectMeasurements();
   const { servicesManager, commandsManager } = useSystem();
-  const { uiNotificationService } = servicesManager.services as AppTypes.Services;
+  const { uiNotificationService, viewportGridService, displaySetService } =
+    servicesManager.services as AppTypes.Services;
   const { runtimeConfig, currentImage } = useNdtViewerContext();
   const { relations, isLoading, error } = useNdtRelations(runtimeConfig, currentImage);
   const selectedItem = useMemo(
@@ -464,6 +594,7 @@ export default function PanelDefectList() {
   const [srEvaluations, setSrEvaluations] = useState<NdtEvaluationRecord[]>([]);
   const [isLoadingSrEvaluations, setIsLoadingSrEvaluations] = useState(false);
   const appliedSrEvaluationKeyRef = useRef('');
+  const originalImageRef = useRef<Partial<NdtCurrentImageInfo> | null>(null);
 
   useEffect(() => {
     if (!selectedItem?.uid) {
@@ -487,6 +618,9 @@ export default function PanelDefectList() {
     !!currentImage.studyInstanceUID &&
     !!currentImage.seriesInstanceUID &&
     !!currentImage.sopInstanceUID;
+
+  const originalTarget = originalImageRef.current || getOriginalTargetFromRelations(relations);
+  const canReturnOriginal = !!getDisplaySetByTarget(displaySetService, originalTarget);
 
   const updateForm = (field: keyof NdtEvaluationForm, value: string) => {
     setForm(prev => ({
@@ -661,18 +795,79 @@ export default function PanelDefectList() {
     }
   };
 
+  const showDisplaySetInActiveViewport = useCallback(
+    (target?: Partial<NdtCurrentImageInfo> | null, options: { notifyOnMiss?: boolean } = {}) => {
+      const displaySet = getDisplaySetByTarget(displaySetService, target);
+      const viewportId = viewportGridService.getActiveViewportId?.();
+
+      if (!displaySet || !viewportId) {
+        if (options.notifyOnMiss !== false) {
+          uiNotificationService?.show?.({
+            title: '图像跳转失败',
+            message: '未在当前研究中找到可显示的目标图像。',
+            type: 'warning',
+          });
+        }
+        return false;
+      }
+
+      viewportGridService.setDisplaySetsForViewport({
+        viewportId,
+        displaySetInstanceUIDs: [displaySet.displaySetInstanceUID],
+      });
+
+      return true;
+    },
+    [displaySetService, uiNotificationService, viewportGridService]
+  );
+
+  const rememberCurrentImageAsOriginal = useCallback(() => {
+    if (!currentImage.displaySetInstanceUID && !currentImage.sopInstanceUID) {
+      return;
+    }
+
+    originalImageRef.current = {
+      displaySetInstanceUID: currentImage.displaySetInstanceUID,
+      studyInstanceUID: currentImage.studyInstanceUID,
+      seriesInstanceUID: currentImage.seriesInstanceUID,
+      sopInstanceUID: currentImage.sopInstanceUID,
+      imageId: currentImage.imageId,
+    };
+  }, [currentImage]);
+
+  const handleSelectRelatedDisplaySet = useCallback(
+    (item: NdtRelatedObject) => {
+      const target = {
+        displaySetInstanceUID: getRelatedDisplaySetUID(item),
+        seriesInstanceUID: getRelatedSeriesInstanceUID(item),
+        sopInstanceUID: getRelatedSopInstanceUID(item),
+      };
+
+      rememberCurrentImageAsOriginal();
+      showDisplaySetInActiveViewport(target);
+    },
+    [rememberCurrentImageAsOriginal, showDisplaySetInActiveViewport]
+  );
+
+  const handleReturnOriginal = useCallback(() => {
+    showDisplaySetInActiveViewport(originalTarget);
+  }, [originalTarget, showDisplaySetInActiveViewport]);
+
   const handleSelectSr = async (item: NdtRelatedObject) => {
-    const srSopInstanceUID = getRelationValue(
-      item,
-      'relatedSopInstanceUid',
-      'related_sop_instance_uid',
-      'sopInstanceUID',
-      'sop_instance_uid'
-    );
+    const srSopInstanceUID = getRelatedSopInstanceUID(item);
     if (!runtimeConfig.taskId || !srSopInstanceUID) {
       return;
     }
 
+    rememberCurrentImageAsOriginal();
+    showDisplaySetInActiveViewport(
+      {
+        displaySetInstanceUID: getRelatedDisplaySetUID(item),
+        seriesInstanceUID: getRelatedSeriesInstanceUID(item),
+        sopInstanceUID: srSopInstanceUID,
+      },
+      { notifyOnMiss: false }
+    );
     loadSrEvaluations(String(srSopInstanceUID));
   };
 
@@ -708,9 +903,19 @@ export default function PanelDefectList() {
             </div>
           ) : null}
           <div className="space-y-4">
+            <Button
+              className="w-full justify-center gap-2"
+              variant="outline"
+              disabled={!canReturnOriginal}
+              onClick={handleReturnOriginal}
+            >
+              <Icons.ArrowLeft className="h-4 w-4" />
+              返回原始图
+            </Button>
             <RelatedObjectGroup
               title="处理图像"
               items={relations.processedImages}
+              onSelect={handleSelectRelatedDisplaySet}
             />
             <RelatedObjectGroup
               title="截图"

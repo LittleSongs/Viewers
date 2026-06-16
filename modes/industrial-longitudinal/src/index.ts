@@ -8,7 +8,6 @@ import { ToolbarService } from '@ohif/core';
 import { id } from './id';
 
 const DEFECT_PANEL_ID = '@ohif/extension-industrial-review.panelModule.panelDefectList';
-const LINE_PROFILE_PANEL_ID = '@ohif/extension-industrial-review.panelModule.panelLineProfile';
 
 const { TOOLBAR_SECTIONS } = ToolbarService;
 
@@ -29,6 +28,19 @@ const defectAnnotationButtonGroup = {
   uiType: 'ohif.toolButtonList',
   props: {
     buttonSection: 'defectAnnotationSection',
+  },
+};
+
+const grayscaleCurveButton = {
+  id: 'GrayscaleCurve',
+  uiType: 'ohif.toolButton',
+  props: {
+    id: 'Length',
+    icon: 'tool-length',
+    label: '灰度曲线',
+    tooltip: '绘制采样线并生成灰度曲线',
+    commands: 'activateGrayscaleCurveTool',
+    evaluate: 'evaluate.cornerstoneTool',
   },
 };
 
@@ -79,12 +91,18 @@ const rightPanels = industrialRouteProps.rightPanels || [];
 const toolbarSections = {
   ...longitudinalModeInstance.toolbarSections,
   defectAnnotationSection: ['DefectRectangle', 'DefectPolygon', 'DefectPoint'],
-  [TOOLBAR_SECTIONS.primary]: [...primaryToolbar, 'InspectionContext', 'DefectAnnotation'],
+  [TOOLBAR_SECTIONS.primary]: [
+    ...primaryToolbar,
+    'InspectionContext',
+    'GrayscaleCurve',
+    'DefectAnnotation',
+  ],
 };
 
 const toolbarButtons = [
   ...longitudinalToolbarButtons,
   inspectionContextButton,
+  grayscaleCurveButton,
   defectAnnotationButtonGroup,
   defectRectangleButton,
   defectPolygonButton,
@@ -103,7 +121,7 @@ const industrialRoute = {
     ...industrialRouteBase?.layoutInstance,
     props: {
       ...industrialRouteProps,
-      rightPanels: [...rightPanels, DEFECT_PANEL_ID, LINE_PROFILE_PANEL_ID],
+      rightPanels: [...rightPanels, DEFECT_PANEL_ID],
     },
   },
 };
