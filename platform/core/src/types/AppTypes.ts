@@ -83,6 +83,7 @@ declare global {
     }
 
     export interface Config {
+      theme?: 'light' | 'dark';
       studyBrowserMode?: 'all' | 'primary';
       routerBasename?: string;
       customizationService?: CustomizationServiceType;
