@@ -5,6 +5,8 @@ import type {
   NdtEvaluationRecord,
   NdtRelationResponse,
   NdtRuntimeConfig,
+  NdtObjectTreeResponse,
+  NdtEvaluationHistoryResponse,
 } from '../types';
 
 export const DEFAULT_RUOYI_API_BASE = 'http://localhost:8080';
@@ -137,7 +139,9 @@ async function requestJson<T>(
       ...buildAuthHeaders(config.token),
       ...headers,
     },
-    credentials: 'include',
+    // RuoYi authentication is sent in the Authorization header. Avoid a
+    // credentialed CORS request because local/test APIs do not allow cookies.
+    credentials: 'same-origin',
   });
 
   const body = await response.json().catch(() => null);
@@ -232,4 +236,34 @@ export async function getEvaluationsBySr(
   );
 
   return ('data' in body && body.data ? body.data : body) as NdtEvaluationRecord[];
+}
+
+function unwrapData<T>(body: { data?: T } | T): T {
+  return ('data' in (body as object) && (body as { data?: T }).data
+    ? (body as { data: T }).data
+    : body) as T;
+}
+
+export async function getObjectTree(
+  taskId: NdtRuntimeConfig['taskId'],
+  config: NdtRuntimeConfig
+): Promise<NdtObjectTreeResponse> {
+  const body = await requestJson<{ data?: NdtObjectTreeResponse } | NdtObjectTreeResponse>(
+    `/ndt/task/${encodeURIComponent(String(taskId))}/object-tree`,
+    config
+  );
+  return unwrapData(body);
+}
+
+export async function getEvaluationHistory(
+  taskId: NdtRuntimeConfig['taskId'],
+  sopInstanceUID: string,
+  config: NdtRuntimeConfig
+): Promise<NdtEvaluationHistoryResponse> {
+  const body = await requestJson<
+    { data?: NdtEvaluationHistoryResponse } | NdtEvaluationHistoryResponse
+  >('/ndt/evaluation/history', config, {
+    query: { taskId, sopInstanceUID },
+  });
+  return unwrapData(body);
 }

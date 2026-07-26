@@ -2,6 +2,10 @@
 window.config = {
   routerBasename: null,
   showStudyList: true,
+
+  // 主题色：'light' 使用浅色背景，'dark'（或不填）使用默认深色背景
+  theme: 'light',
+
   extensions: [],
   modes: [],
   // below flag is for performance reasons, but it might not work for all servers

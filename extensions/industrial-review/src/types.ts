@@ -3,6 +3,8 @@ export const DEFECT_TOOL_NAMES = ['RectangleROI', 'PlanarFreehandROI', 'Probe'] 
 export type DefectToolName = (typeof DEFECT_TOOL_NAMES)[number];
 
 export const DEFECT_PANEL_ID = '@ohif/extension-industrial-review.panelModule.panelDefectList';
+export const NDT_OBJECT_BROWSER_PANEL_ID =
+  '@ohif/extension-industrial-review.panelModule.panelNdtObjectBrowser';
 
 export const DEFECT_TYPE_OPTIONS = ['气孔', '夹渣', '裂纹', '未焊透', '其他'] as const;
 export const DEFECT_STATUS_OPTIONS = ['待确认', '已确认', '已处理'] as const;
@@ -14,6 +16,54 @@ export type DefectStatusOption = (typeof DEFECT_STATUS_OPTIONS)[number];
 export type DefectLevelOption = (typeof DEFECT_LEVEL_OPTIONS)[number];
 export type ConclusionOption = (typeof CONCLUSION_OPTIONS)[number];
 export type NdtTaskId = number | string;
+
+export type NdtObjectType =
+  | 'ORIGINAL'
+  | 'PROCESSED_IMAGE'
+  | 'SNAPSHOT'
+  | 'PRESENTATION_STATE'
+  | 'SR'
+  | 'OTHER_DERIVED';
+
+export interface NdtObjectTreeItem {
+  id?: NdtTaskId;
+  objectType: NdtObjectType;
+  label: string;
+  studyInstanceUid?: string;
+  seriesInstanceUid?: string;
+  sopInstanceUid?: string;
+  modality?: string;
+  seriesNumber?: string | number;
+  instanceNumber?: string | number;
+  seriesDescription?: string;
+  createTime?: string;
+}
+
+export interface NdtObjectTreePart {
+  id?: NdtTaskId;
+  partNo?: string;
+  partName?: string;
+  sourceDicomInstanceId?: NdtTaskId;
+  sourceSopInstanceUid?: string;
+  objects: NdtObjectTreeItem[];
+}
+
+export interface NdtObjectTreeResponse {
+  parts: NdtObjectTreePart[];
+  unassignedObjects: NdtObjectTreeItem[];
+}
+
+export interface NdtEvaluationHistoryPart {
+  id?: NdtTaskId;
+  partNo?: string;
+  partName?: string;
+  sourceSopInstanceUid?: string;
+  evaluations: NdtEvaluationRecord[];
+}
+
+export interface NdtEvaluationHistoryResponse {
+  parts: NdtEvaluationHistoryPart[];
+}
 
 export interface DefectMeasurement {
   uid: string;
@@ -119,6 +169,8 @@ export interface NdtEvaluationRecord {
   remark?: string;
   evaluatorUserId?: NdtTaskId;
   evaluator_user_id?: NdtTaskId;
+  evaluatorUserName?: string;
+  evaluator_user_name?: string;
   evaluateTime?: string;
   evaluate_time?: string;
   status?: string;

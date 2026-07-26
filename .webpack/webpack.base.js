@@ -200,6 +200,10 @@ module.exports = (env, argv, { SRC_DIR, ENTRY }) => {
         '@hooks': path.resolve(__dirname, '../platform/app/src/hooks'),
         '@routes': path.resolve(__dirname, '../platform/app/src/routes'),
         '@state': path.resolve(__dirname, '../platform/app/src/state'),
+        // Keep @ohif/app imports on the same physical module as the PWA entry.
+        // This matters in git worktrees whose shared node_modules workspace links
+        // still point at the primary checkout; loading both paths boots React twice.
+        '@ohif/app$': path.resolve(__dirname, '../platform/app/src'),
         '@ohif/extension-industrial-review': path.resolve(
           __dirname,
           '../extensions/industrial-review/src'

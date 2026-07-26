@@ -78,6 +78,13 @@ function App({
     run();
   }, []);
 
+  // Apply the color theme from config. `theme: 'light'` switches the UI to the
+  // light palette; anything else (including omitting it) keeps the default dark palette.
+  useEffect(() => {
+    const theme = init?.appConfig?.theme ?? (config as AppTypes.Config)?.theme;
+    document.documentElement.classList.toggle('theme-light', theme === 'light');
+  }, [init]);
+
   if (!init) {
     return null;
   }

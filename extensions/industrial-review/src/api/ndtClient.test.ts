@@ -2,6 +2,8 @@ import {
   batchSubmitEvaluationWithSr,
   buildAuthHeaders,
   getEvaluationsBySr,
+  getEvaluationHistory,
+  getObjectTree,
   getNdtRuntimeConfig,
   normalizeRuoyiApiBase,
 } from './ndtClient';
@@ -127,6 +129,40 @@ describe('ndtClient evaluation SR APIs', () => {
 
     expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe(
       'http://localhost:8080/ndt/evaluation/by-sr?taskId=1001&srSopInstanceUID=9.8.7'
+    );
+  });
+
+  it('unwraps the object tree and evaluation history API responses', async () => {
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ code: 200, data: { parts: [], unassignedObjects: [] } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ code: 200, data: { parts: [{ id: 1 }] } }),
+      });
+    const config = {
+      ruoyiApiBase: 'http://localhost:8080',
+      taskId: 1001,
+      canEvaluate: false,
+    };
+
+    await expect(getObjectTree(1001, config)).resolves.toEqual({
+      parts: [],
+      unassignedObjects: [],
+    });
+    await expect(getEvaluationHistory(1001, '1.2.3', config)).resolves.toEqual({
+      parts: [{ id: 1 }],
+    });
+    expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe(
+      'http://localhost:8080/ndt/task/1001/object-tree'
+    );
+    expect((global.fetch as jest.Mock).mock.calls[0][1]).toEqual(
+      expect.objectContaining({ credentials: 'same-origin' })
+    );
+    expect((global.fetch as jest.Mock).mock.calls[1][0]).toBe(
+      'http://localhost:8080/ndt/evaluation/history?taskId=1001&sopInstanceUID=1.2.3'
     );
   });
 });

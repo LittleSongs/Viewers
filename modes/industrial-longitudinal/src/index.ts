@@ -8,6 +8,8 @@ import { ToolbarService } from '@ohif/core';
 import { id } from './id';
 
 const DEFECT_PANEL_ID = '@ohif/extension-industrial-review.panelModule.panelDefectList';
+const NDT_OBJECT_BROWSER_PANEL_ID =
+  '@ohif/extension-industrial-review.panelModule.panelNdtObjectBrowser';
 
 const { TOOLBAR_SECTIONS } = ToolbarService;
 
@@ -121,6 +123,7 @@ const industrialRoute = {
     ...industrialRouteBase?.layoutInstance,
     props: {
       ...industrialRouteProps,
+      leftPanels: [NDT_OBJECT_BROWSER_PANEL_ID],
       rightPanels: [...rightPanels, DEFECT_PANEL_ID],
     },
   },

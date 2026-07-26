@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from '@ohif/ui-next';
 import useDefectMeasurements from '../hooks/useDefectMeasurements';
-import useNdtRelations from '../hooks/useNdtRelations';
+import useNdtEvaluationHistory from '../hooks/useNdtEvaluationHistory';
 import useNdtViewerContext from '../hooks/useNdtViewerContext';
 import { batchSubmitEvaluationWithSr, getEvaluationsBySr } from '../api/ndtClient';
 import createDicomSrBlob from '../utils/createDicomSrBlob';
@@ -31,7 +31,7 @@ import {
   type NdtCurrentImageInfo,
   type NdtEvaluationForm,
   type NdtEvaluationRecord,
-  type NdtRelatedObject,
+  type NdtEvaluationHistoryResponse,
 } from '../types';
 
 function ToolTypeBadge({ toolName }: { toolName: DefectListItem['toolName'] }) {
@@ -214,262 +214,57 @@ function getRelationValue(item, ...keys: string[]) {
   return undefined;
 }
 
-function toStringValue(value: unknown) {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-
-  const normalized = String(value).trim();
-  return normalized || undefined;
-}
-
-function getRelatedDisplaySetUID(item?: NdtRelatedObject | NdtEvaluationRecord | null) {
-  return toStringValue(
-    getRelationValue(
-      item,
-      'displaySetInstanceUID',
-      'display_set_instance_uid',
-      'relatedDisplaySetInstanceUID',
-      'related_display_set_instance_uid'
-    )
-  );
-}
-
-function getRelatedSopInstanceUID(item?: NdtRelatedObject | NdtEvaluationRecord | null) {
-  return toStringValue(
-    getRelationValue(
-      item,
-      'relatedSopInstanceUid',
-      'related_sop_instance_uid',
-      'sopInstanceUID',
-      'sop_instance_uid'
-    )
-  );
-}
-
-function getRelatedSeriesInstanceUID(item?: NdtRelatedObject | NdtEvaluationRecord | null) {
-  return toStringValue(
-    getRelationValue(
-      item,
-      'relatedSeriesInstanceUID',
-      'related_series_instance_uid',
-      'seriesInstanceUID',
-      'series_instance_uid'
-    )
-  );
-}
-
-function getSourceSopInstanceUID(item?: NdtRelatedObject | NdtEvaluationRecord | null) {
-  return toStringValue(
-    getRelationValue(
-      item,
-      'sourceSopInstanceUID',
-      'source_sop_instance_uid',
-      'originalSopInstanceUID',
-      'original_sop_instance_uid',
-      'referencedSopInstanceUID',
-      'referenced_sop_instance_uid',
-      'source_sop_instance_uid'
-    )
-  );
-}
-
-function getSourceSeriesInstanceUID(item?: NdtRelatedObject | NdtEvaluationRecord | null) {
-  return toStringValue(
-    getRelationValue(
-      item,
-      'sourceSeriesInstanceUID',
-      'source_series_instance_uid',
-      'originalSeriesInstanceUID',
-      'original_series_instance_uid',
-      'referencedSeriesInstanceUID',
-      'referenced_series_instance_uid'
-    )
-  );
-}
-
-function getDisplaySetByTarget(displaySetService, target?: Partial<NdtCurrentImageInfo> | null) {
-  const displaySetInstanceUID = toStringValue(target?.displaySetInstanceUID);
-
-  if (displaySetInstanceUID) {
-    const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
-    if (displaySet) {
-      return displaySet;
-    }
-  }
-
-  const sopInstanceUID = toStringValue(target?.sopInstanceUID);
-  const seriesInstanceUID = toStringValue(target?.seriesInstanceUID);
-
-  if (sopInstanceUID && typeof displaySetService.getDisplaySetForSOPInstanceUID === 'function') {
-    const displaySet = displaySetService.getDisplaySetForSOPInstanceUID(
-      sopInstanceUID,
-      seriesInstanceUID
-    );
-    if (displaySet) {
-      return displaySet;
-    }
-  }
-
-  if (sopInstanceUID && typeof displaySetService.getActiveDisplaySets === 'function') {
-    return displaySetService.getActiveDisplaySets().find(displaySet => {
-      const instances = [displaySet?.instance, ...(displaySet?.instances || [])].filter(Boolean);
-      return instances.some(instance => instance?.SOPInstanceUID === sopInstanceUID);
-    });
-  }
-
-  return undefined;
-}
-
-function getOriginalTargetFromRelations(relations): Partial<NdtCurrentImageInfo> | null {
-  const relatedItems = [
-    ...(relations.processedImages || []),
-    ...(relations.snapshots || []),
-    ...(relations.srReports || []),
-  ];
-
-  for (const item of relatedItems) {
-    const sopInstanceUID = getSourceSopInstanceUID(item);
-    const seriesInstanceUID = getSourceSeriesInstanceUID(item);
-
-    if (sopInstanceUID || seriesInstanceUID) {
-      return {
-        sopInstanceUID,
-        seriesInstanceUID,
-      };
-    }
-  }
-
-  return null;
-}
-
-function RelatedObjectRow({
-  item,
-  isSelected = false,
-  onSelect,
-}: {
-  item: NdtRelatedObject;
-  isSelected?: boolean;
-  onSelect?: (item: NdtRelatedObject) => void;
-}) {
-  const title =
-    getRelationValue(item, 'fileName', 'file_name', 'relatedType', 'related_type') || '未命名对象';
-  const sop = getRelationValue(
-    item,
-    'sopInstanceUID',
-    'sop_instance_uid',
-    'source_sop_instance_uid'
-  );
-  const createdAt = getRelationValue(item, 'createTime', 'create_time');
-
-  return (
-    <div
-      className={[
-        'border-border bg-background rounded border px-2 py-2',
-        onSelect ? 'hover:bg-accent/40 cursor-pointer transition-colors' : '',
-        isSelected ? 'ring-primary bg-accent/30 ring-1' : '',
-      ].join(' ')}
-      onClick={() => onSelect?.(item)}
-      role={onSelect ? 'button' : undefined}
-      tabIndex={onSelect ? 0 : undefined}
-      onKeyDown={event => {
-        if (!onSelect) {
-          return;
-        }
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          onSelect(item);
-        }
-      }}
-    >
-      <div className="text-foreground truncate text-xs font-medium">{String(title)}</div>
-      <div className="text-muted-foreground mt-1 truncate text-[11px]">{String(sop || '-')}</div>
-      {createdAt ? (
-        <div className="text-muted-foreground mt-1 text-[11px]">{String(createdAt)}</div>
-      ) : null}
-    </div>
-  );
-}
-
-function RelatedObjectGroup({
-  title,
-  items,
-  selectedSopInstanceUID,
-  onSelect,
-}: {
-  title: string;
-  items: NdtRelatedObject[] | NdtEvaluationRecord[];
-  selectedSopInstanceUID?: string | null;
-  onSelect?: (item: NdtRelatedObject) => void;
-}) {
-  return (
-    <div>
-      <div className="text-muted-foreground mb-2 text-xs">{`${title} (${items.length})`}</div>
-      {items.length ? (
-        <div className="space-y-2">
-          {items.map((item, index) => (
-            <RelatedObjectRow
-              key={String(getRelationValue(item, 'id') || index)}
-              item={item as NdtRelatedObject}
-              isSelected={
-                !!selectedSopInstanceUID &&
-                getRelationValue(
-                  item,
-                  'relatedSopInstanceUid',
-                  'related_sop_instance_uid',
-                  'sopInstanceUID',
-                  'sop_instance_uid'
-                ) === selectedSopInstanceUID
-              }
-              onSelect={onSelect}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="text-muted-foreground rounded border border-dashed px-2 py-3 text-xs">
-          暂无数据
-        </div>
-      )}
-    </div>
-  );
-}
-
-function EvaluationRecordRow({ item }: { item: NdtEvaluationRecord }) {
-  const defectType = getRelationValue(item, 'defectType', 'defect_type');
-  const defectLevel = getRelationValue(item, 'defectLevel', 'defect_level');
-  const conclusion = getRelationValue(item, 'conclusion');
-  const evaluateTime = getRelationValue(item, 'evaluateTime', 'evaluate_time');
-
-  return (
-    <div className="border-border bg-background rounded border px-2 py-2">
-      <div className="text-foreground truncate text-xs font-medium">
-        {[defectType, defectLevel, conclusion].filter(Boolean).join(' / ') || '评定记录'}
+export function EvaluationHistory({ history }: { history: NdtEvaluationHistoryResponse }) {
+  if (!history.parts.length) {
+    return (
+      <div className="text-muted-foreground rounded border border-dashed px-2 py-3 text-xs">
+        暂无评定历史
       </div>
-      {evaluateTime ? (
-        <div className="text-muted-foreground mt-1 text-[11px]">{String(evaluateTime)}</div>
-      ) : null}
-    </div>
-  );
-}
+    );
+  }
 
-function EvaluationRecordGroup({ items }: { items: NdtEvaluationRecord[] }) {
   return (
-    <div>
-      <div className="text-muted-foreground mb-2 text-xs">{`历史评定 (${items.length})`}</div>
-      {items.length ? (
-        <div className="space-y-2">
-          {items.map((item, index) => (
-            <EvaluationRecordRow
-              key={String(getRelationValue(item, 'id') || index)}
-              item={item}
-            />
-          ))}
+    <div className="space-y-4">
+      {history.parts.map(part => (
+        <div key={String(part.id || part.partNo)}>
+          <div className="text-muted-foreground mb-2 text-xs">
+            {`${part.partNo || '检测部位'} · ${part.partName || part.sourceSopInstanceUid || ''}`}
+          </div>
+          <div className="space-y-2">
+            {part.evaluations.length ? (
+              part.evaluations.map((record, index) => (
+                <div
+                  key={String(getRelationValue(record, 'id') || index)}
+                  className="border-border bg-background rounded border px-2 py-2"
+                >
+                  <div className="text-foreground text-xs font-medium">
+                    {[
+                      getRelationValue(record, 'defectType', 'defect_type'),
+                      getRelationValue(record, 'defectLevel', 'defect_level'),
+                      getRelationValue(record, 'conclusion'),
+                    ]
+                      .filter(Boolean)
+                      .join(' / ') || '评定记录'}
+                  </div>
+                  <div className="text-muted-foreground mt-1 text-[11px]">
+                    {[
+                      getRelationValue(record, 'evaluatorUserName', 'evaluator_user_name') ||
+                        '未知评定人',
+                      getRelationValue(record, 'evaluateTime', 'evaluate_time'),
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-muted-foreground rounded border border-dashed px-2 py-3 text-xs">
+                该检测部位暂无评定
+              </div>
+            )}
+          </div>
         </div>
-      ) : (
-        <div className="text-muted-foreground rounded border border-dashed px-2 py-3 text-xs">
-          暂无评定
-        </div>
-      )}
+      ))}
     </div>
   );
 }
@@ -574,10 +369,14 @@ function FormSelect({
 export default function PanelDefectList() {
   const items = useDefectMeasurements();
   const { servicesManager, commandsManager } = useSystem();
-  const { uiNotificationService, viewportGridService, displaySetService } =
-    servicesManager.services as AppTypes.Services;
+  const { uiNotificationService } = servicesManager.services as AppTypes.Services;
   const { runtimeConfig, currentImage } = useNdtViewerContext();
-  const { relations, isLoading, error } = useNdtRelations(runtimeConfig, currentImage);
+  const historySopInstanceUID = currentImage.srSopInstanceUID || currentImage.sopInstanceUID;
+  const {
+    history,
+    isLoading: isLoadingHistory,
+    error: historyError,
+  } = useNdtEvaluationHistory(runtimeConfig, historySopInstanceUID);
   const selectedItem = useMemo(
     () => items.find(item => item.isSelected) || items[0] || null,
     [items]
@@ -592,9 +391,8 @@ export default function PanelDefectList() {
   const [isSaving, setIsSaving] = useState(false);
   const [selectedSrSopInstanceUID, setSelectedSrSopInstanceUID] = useState<string | null>(null);
   const [srEvaluations, setSrEvaluations] = useState<NdtEvaluationRecord[]>([]);
-  const [isLoadingSrEvaluations, setIsLoadingSrEvaluations] = useState(false);
+  const [, setIsLoadingSrEvaluations] = useState(false);
   const appliedSrEvaluationKeyRef = useRef('');
-  const originalImageRef = useRef<Partial<NdtCurrentImageInfo> | null>(null);
 
   useEffect(() => {
     if (!selectedItem?.uid) {
@@ -618,9 +416,6 @@ export default function PanelDefectList() {
     !!currentImage.studyInstanceUID &&
     !!currentImage.seriesInstanceUID &&
     !!currentImage.sopInstanceUID;
-
-  const originalTarget = originalImageRef.current || getOriginalTargetFromRelations(relations);
-  const canReturnOriginal = !!getDisplaySetByTarget(displaySetService, originalTarget);
 
   const updateForm = (field: keyof NdtEvaluationForm, value: string) => {
     setForm(prev => ({
@@ -795,82 +590,6 @@ export default function PanelDefectList() {
     }
   };
 
-  const showDisplaySetInActiveViewport = useCallback(
-    (target?: Partial<NdtCurrentImageInfo> | null, options: { notifyOnMiss?: boolean } = {}) => {
-      const displaySet = getDisplaySetByTarget(displaySetService, target);
-      const viewportId = viewportGridService.getActiveViewportId?.();
-
-      if (!displaySet || !viewportId) {
-        if (options.notifyOnMiss !== false) {
-          uiNotificationService?.show?.({
-            title: '图像跳转失败',
-            message: '未在当前研究中找到可显示的目标图像。',
-            type: 'warning',
-          });
-        }
-        return false;
-      }
-
-      viewportGridService.setDisplaySetsForViewport({
-        viewportId,
-        displaySetInstanceUIDs: [displaySet.displaySetInstanceUID],
-      });
-
-      return true;
-    },
-    [displaySetService, uiNotificationService, viewportGridService]
-  );
-
-  const rememberCurrentImageAsOriginal = useCallback(() => {
-    if (!currentImage.displaySetInstanceUID && !currentImage.sopInstanceUID) {
-      return;
-    }
-
-    originalImageRef.current = {
-      displaySetInstanceUID: currentImage.displaySetInstanceUID,
-      studyInstanceUID: currentImage.studyInstanceUID,
-      seriesInstanceUID: currentImage.seriesInstanceUID,
-      sopInstanceUID: currentImage.sopInstanceUID,
-      imageId: currentImage.imageId,
-    };
-  }, [currentImage]);
-
-  const handleSelectRelatedDisplaySet = useCallback(
-    (item: NdtRelatedObject) => {
-      const target = {
-        displaySetInstanceUID: getRelatedDisplaySetUID(item),
-        seriesInstanceUID: getRelatedSeriesInstanceUID(item),
-        sopInstanceUID: getRelatedSopInstanceUID(item),
-      };
-
-      rememberCurrentImageAsOriginal();
-      showDisplaySetInActiveViewport(target);
-    },
-    [rememberCurrentImageAsOriginal, showDisplaySetInActiveViewport]
-  );
-
-  const handleReturnOriginal = useCallback(() => {
-    showDisplaySetInActiveViewport(originalTarget);
-  }, [originalTarget, showDisplaySetInActiveViewport]);
-
-  const handleSelectSr = async (item: NdtRelatedObject) => {
-    const srSopInstanceUID = getRelatedSopInstanceUID(item);
-    if (!runtimeConfig.taskId || !srSopInstanceUID) {
-      return;
-    }
-
-    rememberCurrentImageAsOriginal();
-    showDisplaySetInActiveViewport(
-      {
-        displaySetInstanceUID: getRelatedDisplaySetUID(item),
-        seriesInstanceUID: getRelatedSeriesInstanceUID(item),
-        sopInstanceUID: srSopInstanceUID,
-      },
-      { notifyOnMiss: false }
-    );
-    loadSrEvaluations(String(srSopInstanceUID));
-  };
-
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-transparent">
       <PanelSection defaultOpen={true}>
@@ -889,60 +608,20 @@ export default function PanelDefectList() {
 
       <PanelSection defaultOpen={true}>
         <PanelSection.Header className="bg-popover">
-          <span>相关对象</span>
+          <span>评定历史</span>
         </PanelSection.Header>
         <PanelSection.Content className="px-2 py-2">
-          {isLoading ? (
+          {isLoadingHistory ? (
             <div className="text-muted-foreground rounded border border-dashed px-2 py-3 text-xs">
-              正在加载当前图像相关对象...
+              正在加载评定历史…
             </div>
           ) : null}
-          {error ? (
-            <div className="text-muted-foreground rounded border border-dashed px-2 py-3 text-xs">
-              {error}
+          {historyError ? (
+            <div className="text-destructive rounded border border-dashed px-2 py-3 text-xs">
+              {historyError}
             </div>
           ) : null}
-          <div className="space-y-4">
-            <Button
-              className="w-full justify-center gap-2"
-              variant="outline"
-              disabled={!canReturnOriginal}
-              onClick={handleReturnOriginal}
-            >
-              <Icons.ArrowLeft className="h-4 w-4" />
-              返回原始图
-            </Button>
-            <RelatedObjectGroup
-              title="处理图像"
-              items={relations.processedImages}
-              onSelect={handleSelectRelatedDisplaySet}
-            />
-            <RelatedObjectGroup
-              title="截图"
-              items={relations.snapshots}
-            />
-            <RelatedObjectGroup
-              title="SR报告"
-              items={relations.srReports}
-              selectedSopInstanceUID={selectedSrSopInstanceUID}
-              onSelect={handleSelectSr}
-            />
-            {selectedSrSopInstanceUID ? (
-              <div>
-                <div className="text-muted-foreground mb-2 text-xs">
-                  {`选中SR评定 (${srEvaluations.length})`}
-                </div>
-                {isLoadingSrEvaluations ? (
-                  <div className="text-muted-foreground rounded border border-dashed px-2 py-3 text-xs">
-                    正在加载该 SR 对应的缺陷评定...
-                  </div>
-                ) : (
-                  <EvaluationRecordGroup items={srEvaluations} />
-                )}
-              </div>
-            ) : null}
-            <EvaluationRecordGroup items={relations.evaluations} />
-          </div>
+          {!isLoadingHistory && !historyError ? <EvaluationHistory history={history} /> : null}
         </PanelSection.Content>
       </PanelSection>
 
