@@ -1,85 +1,61 @@
 import type {
-  NdtObjectTreeItem,
-  NdtObjectTreePart,
+  NdtDicomObject,
   NdtObjectTreeResponse,
   NdtObjectType,
 } from '../types';
 
 const ROLE_ORDER: Record<NdtObjectType, number> = {
-  ORIGINAL: 10,
+  ORIGINAL_IMAGE: 10,
   PROCESSED_IMAGE: 20,
-  SNAPSHOT: 30,
-  PRESENTATION_STATE: 40,
-  SR: 50,
-  OTHER_DERIVED: 60,
+  SCREENSHOT: 30,
+  ANNOTATION_IMAGE: 40,
+  PRESENTATION_STATE: 50,
+  SR: 60,
+  OTHER: 70,
 };
 
 const ROLE_LABELS: Record<NdtObjectType, string> = {
-  ORIGINAL: '原始图像',
+  ORIGINAL_IMAGE: '原始图像',
   PROCESSED_IMAGE: '处理图像',
-  SNAPSHOT: '截图',
+  SCREENSHOT: '截图',
+  ANNOTATION_IMAGE: '标注图像',
   PRESENTATION_STATE: '标注状态',
   SR: '结构化报告',
-  OTHER_DERIVED: '其他衍生对象',
+  OTHER: '其他对象',
 };
-
-function first<T>(...values: T[]): T | undefined {
-  return values.find(value => value !== undefined && value !== null && value !== ('' as T));
-}
-
-function normalizeRole(value?: string): NdtObjectType {
-  return value && value in ROLE_ORDER ? (value as NdtObjectType) : 'OTHER_DERIVED';
-}
-
-function normalizeItem(value: any): NdtObjectTreeItem {
-  const objectType = normalizeRole(first(value.objectType, value.object_type));
-  return {
-    id: value.id,
-    objectType,
-    label: first(value.label, ROLE_LABELS[objectType]) as string,
-    studyInstanceUid: first(value.studyInstanceUid, value.study_instance_uid),
-    seriesInstanceUid: first(value.seriesInstanceUid, value.series_instance_uid),
-    sopInstanceUid: first(value.sopInstanceUid, value.sop_instance_uid),
-    modality: value.modality,
-    seriesNumber: first(value.seriesNumber, value.series_number),
-    instanceNumber: first(value.instanceNumber, value.instance_number),
-    seriesDescription: first(value.seriesDescription, value.series_description),
-    createTime: first(value.createTime, value.create_time),
-  };
-}
 
 function numericOrder(value?: string | number) {
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : Number.MAX_SAFE_INTEGER;
 }
 
-export function compareNdtObjects(a: NdtObjectTreeItem, b: NdtObjectTreeItem) {
+export function compareNdtObjects(a: NdtDicomObject, b: NdtDicomObject) {
   return (
     ROLE_ORDER[a.objectType] - ROLE_ORDER[b.objectType] ||
-    numericOrder(a.instanceNumber) - numericOrder(b.instanceNumber) ||
     String(a.createTime || '').localeCompare(String(b.createTime || '')) ||
     numericOrder(a.id as string | number) - numericOrder(b.id as string | number)
   );
 }
 
-function normalizePart(value: any): NdtObjectTreePart {
-  return {
-    id: value.id,
-    partNo: first(value.partNo, value.part_no),
-    partName: first(value.partName, value.part_name),
-    sourceDicomInstanceId: first(value.sourceDicomInstanceId, value.source_dicom_instance_id),
-    sourceSopInstanceUid: first(value.sourceSopInstanceUid, value.source_sop_instance_uid),
-    objects: (value.objects || []).map(normalizeItem).sort(compareNdtObjects),
-  };
-}
-
 export function normalizeNdtObjectTree(value?: any): NdtObjectTreeResponse {
-  const parts = (value?.parts || []).map(normalizePart).filter(part => part.objects.length);
-  parts.sort((a, b) => String(a.partNo || '').localeCompare(String(b.partNo || '')));
-  const unassignedObjects = (value?.unassignedObjects || value?.unassigned_objects || [])
-    .map(normalizeItem)
-    .sort(compareNdtObjects);
-  return { parts, unassignedObjects };
+  const workpieces = Array.isArray(value?.workpieces)
+    ? value.workpieces.map(workpiece => ({
+        id: workpiece.id,
+        workpieceName: workpiece.workpieceName,
+        status: workpiece.status,
+        positions: Array.isArray(workpiece.positions)
+          ? workpiece.positions.map(position => ({
+              id: position.id,
+              positionCode: position.positionCode,
+              positionName: position.positionName,
+              objects: Array.isArray(position.objects)
+                ? [...position.objects].sort(compareNdtObjects)
+                : [],
+            }))
+          : [],
+      }))
+    : [];
+  return { taskId: value?.taskId, workpieces };
 }
 
 function getInstances(displaySet: any) {
@@ -89,26 +65,25 @@ function getInstances(displaySet: any) {
 }
 
 function getSop(instance: any) {
-  return first(instance?.SOPInstanceUID, instance?.sopInstanceUID);
+  return instance?.SOPInstanceUID || instance?.sopInstanceUID;
 }
 
-export function findDisplaySetForObject(object: NdtObjectTreeItem, displaySets: any[]) {
+export function findDisplaySetForObject(object: NdtDicomObject, displaySets: any[]) {
   const sopMatch = displaySets.find(displaySet =>
     getInstances(displaySet).some(instance => getSop(instance) === object.sopInstanceUid)
   );
   if (sopMatch) return sopMatch;
 
   return displaySets.find(displaySet => {
-    const seriesUid = first(
-      displaySet?.SeriesInstanceUID,
-      displaySet?.seriesInstanceUID,
-      displaySet?.instance?.SeriesInstanceUID
-    );
-    return !getInstances(displaySet).length && seriesUid === object.seriesInstanceUid;
+    const seriesUid =
+      displaySet?.SeriesInstanceUID ||
+      displaySet?.seriesInstanceUID ||
+      displaySet?.instance?.SeriesInstanceUID;
+    return !getInstances(displaySet).length && seriesUid === object.seriesUid;
   });
 }
 
-export function getNdtObjectAvailability(object: NdtObjectTreeItem, displaySets: any[]) {
+export function getNdtObjectAvailability(object: NdtDicomObject, displaySets: any[]) {
   const displaySet = findDisplaySetForObject(object, displaySets);
   if (!displaySet) {
     return { enabled: false, reason: '当前研究中尚未加载该对象' };
@@ -131,7 +106,7 @@ export async function navigateToNdtObject({
   cornerstoneViewportService,
   commandsManager,
 }: {
-  object: NdtObjectTreeItem;
+  object: NdtDicomObject;
   displaySets: any[];
   viewportId?: string;
   viewportGridService: any;

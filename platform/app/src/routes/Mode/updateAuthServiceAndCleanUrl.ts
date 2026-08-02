@@ -21,6 +21,16 @@ export function updateAuthServiceAndCleanUrl(
     }),
   });
 
+  // The industrial NDT client initializes after this route has removed the
+  // launch token from the URL. Preserve it in the session-scoped key that the
+  // client already consumes so its direct RuoYi fetches remain authenticated.
+  try {
+    window.sessionStorage?.setItem('ndt.ruoyiToken', token);
+  } catch {
+    // Storage can be unavailable in privacy-restricted browser contexts. The
+    // OHIF authentication service above still remains configured in that case.
+  }
+
   // Create a URL object with the current location
   const urlObj = new URL(window.location.origin + window.location.pathname + location.search);
 

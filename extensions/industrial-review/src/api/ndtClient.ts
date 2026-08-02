@@ -1,17 +1,14 @@
 import type {
-  NdtCurrentRelationParams,
-  NdtBatchEvaluationSrPayload,
+  NdtDefectPayload,
+  NdtDefectRecord,
   NdtEvaluationPayload,
   NdtEvaluationRecord,
-  NdtRelationResponse,
-  NdtRuntimeConfig,
   NdtObjectTreeResponse,
-  NdtEvaluationHistoryResponse,
+  NdtRuntimeConfig,
 } from '../types';
 
 export const DEFAULT_RUOYI_API_BASE = 'http://localhost:8080';
-
-const TOKEN_STORAGE_KEYS = ['token', 'Admin-Token', 'ruoyi-token', 'Authorization'];
+export const TOKEN_SESSION_KEY = 'ndt.ruoyiToken';
 
 type RuntimeConfigOptions = {
   search?: string;
@@ -19,110 +16,69 @@ type RuntimeConfigOptions = {
 };
 
 function getWindowSearch() {
-  if (typeof window === 'undefined') {
-    return '';
-  }
-
-  return window.location?.search || '';
+  return typeof window === 'undefined' ? '' : window.location.search;
 }
 
 function getWindowStorage() {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
+  if (typeof window === 'undefined') return null;
   try {
-    return window.localStorage;
+    return window.sessionStorage;
   } catch {
     return null;
   }
 }
 
-function readStoredToken(storage?: Storage | null) {
-  if (!storage) {
-    return undefined;
-  }
-
-  for (const key of TOKEN_STORAGE_KEYS) {
-    const value = storage.getItem(key);
-    if (value) {
-      return value;
-    }
-  }
-
-  return undefined;
-}
-
 function parseTaskId(value: string | null) {
-  if (!value) {
-    return undefined;
-  }
-
+  if (!value) return undefined;
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : value;
 }
 
-function parseBooleanParam(value: string | null) {
-  return value === 'true' || value === '1' || value === 'yes';
-}
-
-function parseRuntimeBoolean(value: string | null) {
-  if (value === null || value === undefined) {
-    return undefined;
-  }
-
-  return parseBooleanParam(value) || value === 'false' || value === '0' || value === 'no'
-    ? parseBooleanParam(value)
-    : undefined;
-}
-
 export function normalizeRuoyiApiBase(value?: string | null) {
   const trimmed = value?.trim();
-  if (trimmed) {
-    return trimmed.replace(/\/+$/, '');
-  }
+  return trimmed ? trimmed.replace(/\/+$/, '') : DEFAULT_RUOYI_API_BASE;
+}
 
-  return DEFAULT_RUOYI_API_BASE;
+function removeTokenFromAddressBar() {
+  if (typeof window === 'undefined' || !window.history?.replaceState) return;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has('token')) return;
+  url.searchParams.delete('token');
+  window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
 }
 
 export function getNdtRuntimeConfig(options: RuntimeConfigOptions = {}): NdtRuntimeConfig {
   const search = options.search ?? getWindowSearch();
   const storage = options.storage === undefined ? getWindowStorage() : options.storage;
   const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
-  const token = params.get('token') || readStoredToken(storage);
-  const taskId = parseTaskId(params.get('taskId')) ?? parseTaskId(params.get('TaskId'));
-  const canEvaluate =
-    parseRuntimeBoolean(params.get('canEvaluate')) ?? parseRuntimeBoolean(params.get('CanEvaluate'));
+  const launchToken = params.get('token') || undefined;
+  if (launchToken && storage) {
+    storage.setItem(TOKEN_SESSION_KEY, launchToken);
+  }
+  if (launchToken && options.search === undefined) {
+    removeTokenFromAddressBar();
+  }
 
   return {
     ruoyiApiBase: normalizeRuoyiApiBase(params.get('ruoyiApiBase')),
-    taskId,
-    token: token || undefined,
-    canEvaluate: taskId === undefined ? false : canEvaluate ?? false,
+    taskId: parseTaskId(params.get('taskId')),
+    studyId: parseTaskId(params.get('studyId')),
+    token: launchToken || storage?.getItem(TOKEN_SESSION_KEY) || undefined,
+    canEvaluate: params.get('canEvaluate') === 'true',
   };
 }
 
 export function buildAuthHeaders(token?: string) {
-  if (!token) {
-    return {};
-  }
-
-  const value = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-  return {
-    Authorization: value,
-  };
+  return token ? { Authorization: `Bearer ${token.replace(/^Bearer\s+/i, '')}` } : {};
 }
 
 function buildUrl(path: string, config: NdtRuntimeConfig, query?: Record<string, unknown>) {
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  const url = new URL(`${config.ruoyiApiBase}${normalizedPath}`);
-
+  const url = new URL(`${config.ruoyiApiBase}${path.startsWith('/') ? path : `/${path}`}`);
   Object.entries(query || {}).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {
       url.searchParams.set(key, String(value));
     }
   });
-
   return url.toString();
 }
 
@@ -139,131 +95,140 @@ async function requestJson<T>(
       ...buildAuthHeaders(config.token),
       ...headers,
     },
-    // RuoYi authentication is sent in the Authorization header. Avoid a
-    // credentialed CORS request because local/test APIs do not allow cookies.
     credentials: 'same-origin',
   });
-
   const body = await response.json().catch(() => null);
-  if (!response.ok) {
+  if (!response.ok || (body?.code && body.code !== 200)) {
     throw new Error(body?.msg || body?.message || `RuoYi API request failed: ${response.status}`);
   }
-
-  if (body?.code && body.code !== 200) {
-    throw new Error(body.msg || body.message || `RuoYi API returned code ${body.code}`);
-  }
-
   return body as T;
 }
 
-export async function getCurrentRelations(
-  params: Record<string, unknown> & NdtCurrentRelationParams,
-  config: NdtRuntimeConfig
-): Promise<NdtRelationResponse> {
-  const body = await requestJson<{ data?: NdtRelationResponse } | NdtRelationResponse>(
-    '/ndt/dicom/relation/current',
-    config,
-    {
-      query: params,
-    }
-  );
-
-  return ('data' in body && body.data ? body.data : body) as NdtRelationResponse;
-}
-
-export async function saveEvaluation(
-  payload: NdtEvaluationPayload,
-  config: NdtRuntimeConfig
-): Promise<unknown> {
-  return requestJson('/ndt/evaluation', config, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-}
-
-function appendIfPresent(formData: FormData, key: string, value: unknown) {
-  if (value !== undefined && value !== null && value !== '') {
-    formData.append(key, String(value));
-  }
-}
-
-function toFile(blob: Blob, fileName: string) {
-  if (typeof File !== 'undefined' && blob instanceof File) {
-    return blob;
-  }
-
-  return new File([blob], fileName, {
-    type: blob.type || 'application/dicom',
-  });
-}
-
-export async function batchSubmitEvaluationWithSr(
-  payload: NdtBatchEvaluationSrPayload,
-  config: NdtRuntimeConfig
-): Promise<unknown> {
-  const formData = new FormData();
-  const fileName = payload.srFileName || `ndt-evaluation-${payload.taskId}.dcm`;
-
-  appendIfPresent(formData, 'taskId', payload.taskId);
-  appendIfPresent(formData, 'studyInstanceUID', payload.studyInstanceUID);
-  appendIfPresent(formData, 'seriesInstanceUID', payload.seriesInstanceUID);
-  appendIfPresent(formData, 'sopInstanceUID', payload.sopInstanceUID);
-  formData.append('evaluationsJson', JSON.stringify(payload.evaluations));
-  formData.append('srFile', toFile(payload.srFile, fileName), fileName);
-
-  return requestJson('/ndt/evaluation/batch-submit-sr', config, {
-    method: 'POST',
-    body: formData,
-  });
-}
-
-export async function getEvaluationsBySr(
-  params: {
-    taskId: NdtRuntimeConfig['taskId'];
-    srSopInstanceUID: string;
-  },
-  config: NdtRuntimeConfig
-): Promise<NdtEvaluationRecord[]> {
-  const body = await requestJson<{ data?: NdtEvaluationRecord[] } | NdtEvaluationRecord[]>(
-    '/ndt/evaluation/by-sr',
-    config,
-    {
-      query: params,
-    }
-  );
-
-  return ('data' in body && body.data ? body.data : body) as NdtEvaluationRecord[];
-}
-
 function unwrapData<T>(body: { data?: T } | T): T {
-  return ('data' in (body as object) && (body as { data?: T }).data
-    ? (body as { data: T }).data
-    : body) as T;
+  return (body as { data?: T }).data ?? (body as T);
 }
 
 export async function getObjectTree(
   taskId: NdtRuntimeConfig['taskId'],
+  studyId: NdtRuntimeConfig['studyId'],
   config: NdtRuntimeConfig
 ): Promise<NdtObjectTreeResponse> {
   const body = await requestJson<{ data?: NdtObjectTreeResponse } | NdtObjectTreeResponse>(
     `/ndt/task/${encodeURIComponent(String(taskId))}/object-tree`,
-    config
+    config,
+    { query: { studyId } }
   );
   return unwrapData(body);
 }
 
-export async function getEvaluationHistory(
-  taskId: NdtRuntimeConfig['taskId'],
-  sopInstanceUID: string,
+export async function createDefect(
+  payload: NdtDefectPayload,
   config: NdtRuntimeConfig
-): Promise<NdtEvaluationHistoryResponse> {
-  const body = await requestJson<
-    { data?: NdtEvaluationHistoryResponse } | NdtEvaluationHistoryResponse
-  >('/ndt/evaluation/history', config, {
-    query: { taskId, sopInstanceUID },
-  });
+): Promise<NdtDefectRecord> {
+  const body = await requestJson<{ data?: NdtDefectRecord } | NdtDefectRecord>(
+    '/ndt/defect',
+    config,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }
+  );
   return unwrapData(body);
+}
+
+export async function updateDefect(
+  payload: NdtDefectPayload & { id: NdtDefectRecord['id'] },
+  config: NdtRuntimeConfig
+) {
+  return requestJson('/ndt/defect', config, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listDefects(
+  originalObjectId: NdtDefectPayload['originalObjectId'],
+  config: NdtRuntimeConfig
+): Promise<NdtDefectRecord[]> {
+  const body = await requestJson<{ rows?: NdtDefectRecord[] }>(
+    '/ndt/defect/list',
+    config,
+    { query: { originalObjectId, pageNum: 1, pageSize: 1000 } }
+  );
+  return body.rows || [];
+}
+
+export async function createEvaluation(
+  payload: NdtEvaluationPayload,
+  config: NdtRuntimeConfig
+): Promise<NdtEvaluationRecord> {
+  const body = await requestJson<{ data?: NdtEvaluationRecord } | NdtEvaluationRecord>(
+    '/ndt/evaluation',
+    config,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }
+  );
+  return unwrapData(body);
+}
+
+export async function updateEvaluation(
+  payload: NdtEvaluationPayload & { id: NdtEvaluationRecord['id'] },
+  config: NdtRuntimeConfig
+) {
+  return requestJson('/ndt/evaluation', config, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listEvaluations(
+  defectId: NdtDefectRecord['id'],
+  config: NdtRuntimeConfig
+): Promise<NdtEvaluationRecord[]> {
+  const body = await requestJson<{ rows?: NdtEvaluationRecord[] }>(
+    '/ndt/evaluation/list',
+    config,
+    { query: { defectId, pageNum: 1, pageSize: 1000 } }
+  );
+  return body.rows || [];
+}
+
+export async function submitEvaluation(id: NdtEvaluationRecord['id'], config: NdtRuntimeConfig) {
+  return requestJson(`/ndt/evaluation/${encodeURIComponent(String(id))}/submit`, config, {
+    method: 'POST',
+  });
+}
+
+function toFile(blob: Blob, fileName: string) {
+  return blob instanceof File ? blob : new File([blob], fileName, { type: 'application/dicom' });
+}
+
+export async function submitEvaluationWithSr(
+  evaluationId: NdtEvaluationRecord['id'],
+  sourceObjectId: NdtDefectPayload['originalObjectId'],
+  srFile: Blob,
+  config: NdtRuntimeConfig
+) {
+  const formData = new FormData();
+  formData.append('sourceObjectId', String(sourceObjectId));
+  formData.append('srFile', toFile(srFile, `ndt-evaluation-${evaluationId}.dcm`));
+  return requestJson(
+    `/ndt/evaluation/${encodeURIComponent(String(evaluationId))}/submit-with-sr`,
+    config,
+    { method: 'POST', body: formData }
+  );
+}
+
+export async function getObjectRelations(objectId: string | number, config: NdtRuntimeConfig) {
+  const body = await requestJson<{ data?: unknown[] }>(
+    `/ndt/dicom/object/${encodeURIComponent(String(objectId))}/relations`,
+    config
+  );
+  return body.data || [];
 }

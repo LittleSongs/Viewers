@@ -7,7 +7,6 @@ import NdtCurveFloatingPanel from './components/NdtCurveFloatingPanel';
 import { sampleLineFromActiveViewport } from './utils/curveSampling';
 import { DEFECT_PANEL_ID, type DefectToolName } from './types';
 import type { CurveData } from './types/curve';
-import { saveEvaluation } from './api/ndtClient';
 
 const DEFECT_TOOL_GROUP_IDS = ['default', 'mpr', 'SRToolGroup', 'volume3d'];
 const GRAYSCALE_CURVE_CONTAINER_ID = 'ohif-ndt-grayscale-curve-floating-panel';
@@ -135,9 +134,6 @@ function commandsModule({
 
       measurementService.update(uid, { ...measurement, ...updates }, false);
     },
-    saveNdtEvaluation: ({ payload, runtimeConfig }) => {
-      return saveEvaluation(payload, runtimeConfig);
-    },
   };
 
   return {
@@ -153,7 +149,6 @@ function commandsModule({
       jumpToDefect: actions.jumpToDefect,
       removeDefect: actions.removeDefect,
       updateDefectMeasurement: actions.updateDefectMeasurement,
-      saveNdtEvaluation: actions.saveNdtEvaluation,
     },
     defaultContext: 'DEFAULT',
   };

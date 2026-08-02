@@ -4,13 +4,11 @@ import { render, screen } from '@testing-library/react';
 jest.mock('@ohif/core', () => ({ useSystem: jest.fn() }));
 jest.mock('@ohif/ui-next', () => ({
   Button: 'button',
-  DropdownMenu: 'div',
-  DropdownMenuContent: 'div',
-  DropdownMenuItem: 'div',
-  DropdownMenuTrigger: 'div',
-  Icons: {},
   Input: 'input',
-  PanelSection: 'section',
+  PanelSection: Object.assign('section', {
+    Header: 'header',
+    Content: 'div',
+  }),
   ScrollArea: 'div',
   Select: 'select',
   SelectContent: 'div',
@@ -19,43 +17,45 @@ jest.mock('@ohif/ui-next', () => ({
   SelectValue: 'span',
 }));
 jest.mock('../hooks/useDefectMeasurements', () => jest.fn());
+jest.mock('../hooks/useNdtObjectTree', () => jest.fn());
 jest.mock('../hooks/useNdtViewerContext', () => jest.fn());
-jest.mock('../hooks/useNdtEvaluationHistory', () => jest.fn());
 jest.mock('../utils/createDicomSrBlob', () => jest.fn());
 
-import { EvaluationHistory } from './PanelDefectList';
+import { SavedHistory } from './PanelDefectList';
 
-describe('NDT evaluation history', () => {
-  it('renders read-only history grouped by part without related-object navigation', () => {
+describe('SavedHistory', () => {
+  it('renders defects and their evaluation state from the new split model', () => {
     render(
-      React.createElement(EvaluationHistory, {
-        history: {
-          parts: [
+      React.createElement(SavedHistory, {
+        defects: [
+          {
+            id: 11,
+            originalObjectId: 101,
+            defectNo: 'D-001',
+            defectType: '裂纹',
+            roiType: 'RectangleROI',
+            roiDataJson: '{}',
+            description: '焊缝边缘',
+          },
+        ],
+        evaluations: {
+          '11': [
             {
-              id: 1,
-              partNo: 'P-000031',
-              partName: '焊缝 A',
-              sourceSopInstanceUid: '1.2.3',
-              evaluations: [
-                {
-                  id: 9,
-                  evaluatorUserName: 'inspector',
-                  evaluateTime: '2026-07-21 10:00:00',
-                  defectType: '裂纹',
-                  defectLevel: 'II',
-                  conclusion: '不合格',
-                },
-              ],
+              id: 21,
+              evaluationType: 'DEFECT',
+              defectId: 11,
+              workpieceId: null,
+              level: 'III级',
+              conclusion: '不可接受',
+              description: '需要返修',
+              status: 'SUBMITTED',
             },
           ],
         },
       })
     );
 
-    expect(screen.getByText(/P-000031/)).toBeTruthy();
-    expect(screen.getByText(/裂纹 \/ II \/ 不合格/)).toBeTruthy();
-    expect(screen.getByText(/inspector/)).toBeTruthy();
-    expect(screen.queryByText('相关对象')).toBeNull();
-    expect(screen.queryByText('返回原始图')).toBeNull();
+    expect(screen.getByText(/D-001 · 裂纹/)).toBeTruthy();
+    expect(screen.getByText(/III级 \/ 不可接受 \/ SUBMITTED/)).toBeTruthy();
   });
 });

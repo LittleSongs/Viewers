@@ -1,168 +1,137 @@
 import {
-  batchSubmitEvaluationWithSr,
   buildAuthHeaders,
-  getEvaluationsBySr,
-  getEvaluationHistory,
-  getObjectTree,
+  createDefect,
+  createEvaluation,
   getNdtRuntimeConfig,
-  normalizeRuoyiApiBase,
+  getObjectTree,
+  submitEvaluationWithSr,
+  updateDefect,
+  updateEvaluation,
 } from './ndtClient';
 
-describe('ndtClient runtime config', () => {
-  it('uses localhost RuoYi defaults when URL params are absent', () => {
-    const config = getNdtRuntimeConfig({
-      search: '',
-      storage: null,
-    });
-
-    expect(config.ruoyiApiBase).toBe('http://localhost:8080');
-    expect(config.taskId).toBeUndefined();
-    expect(config.canEvaluate).toBe(false);
-    expect(config.token).toBeUndefined();
-  });
-
-  it('parses RuoYi URL params and normalizes trailing slashes', () => {
-    const config = getNdtRuntimeConfig({
-      search:
-        '?taskId=1001&canEvaluate=true&token=abc123&ruoyiApiBase=http%3A%2F%2Flocalhost%3A8080%2F',
-      storage: null,
-    });
-
-    expect(config.ruoyiApiBase).toBe('http://localhost:8080');
-    expect(config.taskId).toBe(1001);
-    expect(config.canEvaluate).toBe(true);
-    expect(config.token).toBe('abc123');
-  });
-
-  it('falls back to localStorage token names when URL token is absent', () => {
-    const storage = {
-      getItem: jest.fn(key => (key === 'Admin-Token' ? 'stored-token' : null)),
-    } as unknown as Storage;
-
-    const config = getNdtRuntimeConfig({
-      search: '?taskId=12',
-      storage,
-    });
-
-    expect(config.token).toBe('stored-token');
-  });
-
-  it('builds Bearer authorization headers without duplicating the scheme', () => {
-    expect(buildAuthHeaders('plain-token')).toEqual({
-      Authorization: 'Bearer plain-token',
-    });
-    expect(buildAuthHeaders('Bearer existing-token')).toEqual({
-      Authorization: 'Bearer existing-token',
+describe('NDT runtime authentication', () => {
+  it('uses the explicit new launch parameters only', () => {
+    expect(
+      getNdtRuntimeConfig({
+        search: '?taskId=1001&studyId=2002&canEvaluate=true&token=abc&ruoyiApiBase=http%3A%2F%2Flocalhost%3A8080%2F',
+        storage: null,
+      })
+    ).toEqual({
+      ruoyiApiBase: 'http://localhost:8080',
+      taskId: 1001,
+      studyId: 2002,
+      canEvaluate: true,
+      token: 'abc',
     });
   });
 
-  it('normalizes empty or whitespace API bases to the default URL', () => {
-    expect(normalizeRuoyiApiBase('  ')).toBe('http://localhost:8080');
+  it('reads the token from the single OHIF session key', () => {
+    const storage = { getItem: jest.fn(() => 'session-token') } as unknown as Storage;
+    expect(getNdtRuntimeConfig({ search: '?taskId=8', storage }).token).toBe('session-token');
+    expect(storage.getItem).toHaveBeenCalledWith('ndt.ruoyiToken');
+  });
+
+  it('builds a Bearer header', () => {
+    expect(buildAuthHeaders('abc')).toEqual({ Authorization: 'Bearer abc' });
   });
 });
 
-describe('ndtClient evaluation SR APIs', () => {
+describe('new NDT APIs', () => {
+  const config = {
+    ruoyiApiBase: 'http://localhost:8080',
+    taskId: 1001,
+    studyId: 2002,
+    canEvaluate: true,
+    token: 'abc',
+  };
+
   beforeEach(() => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({ code: 200, data: { saved: true } }),
+      json: () => Promise.resolve({ code: 200, data: { id: 9, workpieces: [] } }),
     }) as jest.Mock;
   });
 
-  afterEach(() => {
-    jest.restoreAllMocks();
+  afterEach(() => jest.restoreAllMocks());
+
+  it('loads the workpiece-position-object tree', async () => {
+    await expect(getObjectTree(1001, 2002, config)).resolves.toEqual({ id: 9, workpieces: [] });
+    expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe(
+      'http://localhost:8080/ndt/task/1001/object-tree?studyId=2002'
+    );
   });
 
-  it('uploads batch evaluations and a DICOM SR file as multipart form data', async () => {
-    const srFile = new Blob([new Uint8Array([1, 2, 3])], { type: 'application/dicom' });
-
-    await batchSubmitEvaluationWithSr(
+  it('creates defects and evaluations as separate records', async () => {
+    await createDefect(
       {
-        taskId: 1001,
-        studyInstanceUID: '1.2.3',
-        seriesInstanceUID: '1.2.3.4',
-        sopInstanceUID: '1.2.3.4.5',
-        evaluations: [
-          {
-            taskId: 1001,
-            studyInstanceUID: '1.2.3',
-            seriesInstanceUID: '1.2.3.4',
-            sopInstanceUID: '1.2.3.4.5',
-            defectType: '裂纹',
-            defectLevel: 'II级',
-            conclusion: '不可接受',
-            annotationJson: '{}',
-          },
-        ],
-        srFile,
+        originalObjectId: 30,
+        defectNo: 'D-1',
+        defectType: '裂纹',
+        roiType: 'RectangleROI',
+        roiDataJson: '{}',
+        description: 'critical',
       },
-      {
-        ruoyiApiBase: 'http://localhost:8080',
-        token: 'abc',
-        canEvaluate: true,
-      }
+      config
     );
-
-    const [, request] = (global.fetch as jest.Mock).mock.calls[0];
-    expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe(
-      'http://localhost:8080/ndt/evaluation/batch-submit-sr'
-    );
-    expect(request.method).toBe('POST');
-    expect(request.headers.Authorization).toBe('Bearer abc');
-    expect(request.body).toBeInstanceOf(FormData);
-    expect(request.body.get('taskId')).toBe('1001');
-    expect(request.body.get('evaluationsJson')).toContain('裂纹');
-    expect(request.body.get('srFile')).toBeInstanceOf(File);
-  });
-
-  it('loads evaluations linked to the selected SR SOP instance UID', async () => {
-    await getEvaluationsBySr(
+    await createEvaluation(
       {
-        taskId: 1001,
-        srSopInstanceUID: '9.8.7',
+        evaluationType: 'DEFECT',
+        defectId: 9,
+        workpieceId: null,
+        level: 'II级',
+        conclusion: '不可接受',
+        description: 'critical',
       },
-      {
-        ruoyiApiBase: 'http://localhost:8080',
-        canEvaluate: true,
-      }
+      config
     );
 
     expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe(
-      'http://localhost:8080/ndt/evaluation/by-sr?taskId=1001&srSopInstanceUID=9.8.7'
-    );
-  });
-
-  it('unwraps the object tree and evaluation history API responses', async () => {
-    (global.fetch as jest.Mock)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ code: 200, data: { parts: [], unassignedObjects: [] } }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ code: 200, data: { parts: [{ id: 1 }] } }),
-      });
-    const config = {
-      ruoyiApiBase: 'http://localhost:8080',
-      taskId: 1001,
-      canEvaluate: false,
-    };
-
-    await expect(getObjectTree(1001, config)).resolves.toEqual({
-      parts: [],
-      unassignedObjects: [],
-    });
-    await expect(getEvaluationHistory(1001, '1.2.3', config)).resolves.toEqual({
-      parts: [{ id: 1 }],
-    });
-    expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe(
-      'http://localhost:8080/ndt/task/1001/object-tree'
-    );
-    expect((global.fetch as jest.Mock).mock.calls[0][1]).toEqual(
-      expect.objectContaining({ credentials: 'same-origin' })
+      'http://localhost:8080/ndt/defect'
     );
     expect((global.fetch as jest.Mock).mock.calls[1][0]).toBe(
-      'http://localhost:8080/ndt/evaluation/history?taskId=1001&sopInstanceUID=1.2.3'
+      'http://localhost:8080/ndt/evaluation'
     );
+    expect(JSON.parse((global.fetch as jest.Mock).mock.calls[1][1].body)).toEqual(
+      expect.objectContaining({ evaluationType: 'DEFECT', defectId: 9, workpieceId: null })
+    );
+  });
+
+  it('updates an existing defect and draft evaluation instead of duplicating them', async () => {
+    await updateDefect(
+      {
+        id: 9,
+        originalObjectId: 30,
+        defectNo: 'D-1',
+        defectType: '裂纹',
+        roiType: 'RectangleROI',
+        roiDataJson: '{}',
+        description: 'updated',
+      },
+      config
+    );
+    await updateEvaluation(
+      {
+        id: 10,
+        evaluationType: 'DEFECT',
+        defectId: 9,
+        workpieceId: null,
+        level: 'III级',
+        conclusion: '不可接受',
+        description: 'updated',
+      },
+      config
+    );
+
+    expect((global.fetch as jest.Mock).mock.calls[0][1].method).toBe('PUT');
+    expect((global.fetch as jest.Mock).mock.calls[1][1].method).toBe('PUT');
+  });
+
+  it('submits one evaluation with an SR related to the original object id', async () => {
+    const sr = new Blob([new Uint8Array([1, 2])], { type: 'application/dicom' });
+    await submitEvaluationWithSr(7, 30, sr, config);
+    const [url, request] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(url).toBe('http://localhost:8080/ndt/evaluation/7/submit-with-sr');
+    expect(request.body.get('sourceObjectId')).toBe('30');
+    expect(request.body.get('srFile')).toBeInstanceOf(File);
   });
 });

@@ -3,7 +3,7 @@ import { getObjectTree } from '../api/ndtClient';
 import type { NdtObjectTreeResponse, NdtRuntimeConfig } from '../types';
 import { normalizeNdtObjectTree } from '../utils/ndtObjectTree';
 
-const EMPTY_TREE: NdtObjectTreeResponse = { parts: [], unassignedObjects: [] };
+const EMPTY_TREE: NdtObjectTreeResponse = { workpieces: [] };
 
 export default function useNdtObjectTree(runtimeConfig: NdtRuntimeConfig, displaySetService: any) {
   const [tree, setTree] = useState<NdtObjectTreeResponse>(EMPTY_TREE);
@@ -12,7 +12,7 @@ export default function useNdtObjectTree(runtimeConfig: NdtRuntimeConfig, displa
   const [, setDisplaySetVersion] = useState(0);
 
   useEffect(() => {
-    if (!runtimeConfig.taskId) {
+    if (!runtimeConfig.taskId || !runtimeConfig.studyId) {
       setTree(EMPTY_TREE);
       setError(null);
       return;
@@ -20,7 +20,7 @@ export default function useNdtObjectTree(runtimeConfig: NdtRuntimeConfig, displa
     let cancelled = false;
     setIsLoading(true);
     setError(null);
-    getObjectTree(runtimeConfig.taskId, runtimeConfig)
+    getObjectTree(runtimeConfig.taskId, runtimeConfig.studyId, runtimeConfig)
       .then(data => {
         if (!cancelled) setTree(normalizeNdtObjectTree(data));
       })
